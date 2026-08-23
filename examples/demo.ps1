@@ -6,7 +6,8 @@ Import-Module $module -Force
 $tenantId = '11111111-2222-4333-8444-555555555555'
 $expected = @(@{ path = '$.policies.PilotPolicy.state'; operation = 'Modified'; description = 'Move pilot policy from report-only to enabled' })
 $forbidden = @(@{ path = '$.policies.BreakGlass*'; description = 'Emergency access policy must not change' })
-$case = New-CP365Case -CaseId 'DEMO-001' -Title 'Conditional Access pilot change' `
+$caseId = "DEMO-$([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss'))"
+$case = New-CP365Case -CaseId $caseId -Title 'Conditional Access pilot change' `
     -TenantId $tenantId -TenantDisplayName 'Contoso Demo' -Account 'operator@contoso.example' `
     -Workload EntraID -Mode ReadOnly -ExpectedChange $expected -ForbiddenChange $forbidden -RootPath $OutputRoot
 
