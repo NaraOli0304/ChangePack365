@@ -13,7 +13,7 @@ function Add-CP365Evidence {
     $destination = Join-Path (Join-Path $context.Root $Phase) $fileName
     if (-not $PSCmdlet.ShouldProcess($destination, 'Add evidence')) { return }
     Copy-Item -LiteralPath $source -Destination $destination -Force
-    $hash = Get-CP365Hash -File $destination
+    $hash = Get-CP365Hash -Path $destination
     Write-CP365LedgerEvent -CasePath $context.Root -EventType 'EvidenceAdded' -Payload @{ phase = $Phase; file = "$Phase/$fileName"; sha256 = $hash } | Out-Null
     [pscustomobject]@{ Phase = $Phase; Path = $destination; Sha256 = $hash }
 }
