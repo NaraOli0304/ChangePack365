@@ -14,14 +14,15 @@ function Write-CP365LedgerEvent {
     )
 
     $previousHash = if ($entries.Count) { [string]$entries[-1].entryHash } else { 'GENESIS' }
-    $payloadHash = Get-CP365Hash -Text (ConvertTo-CP365CanonicalJson $Payload)
+    $canonicalPayload = ConvertTo-CP365CanonicalObject $Payload
+    $payloadHash = Get-CP365Hash -Text (ConvertTo-CP365CanonicalJson $canonicalPayload)
     $body = [ordered]@{
         sequence     = $entries.Count + 1
         # Basic ISO 8601 stays a string across ConvertTo/From-Json on every supported PowerShell version.
         timestampUtc = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmss.fffffffZ')
         eventType    = $EventType
         actor        = $Actor
-        payload      = $Payload
+        payload      = $canonicalPayload
         payloadHash  = $payloadHash
         previousHash = $previousHash
     }
