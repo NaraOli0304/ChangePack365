@@ -7,9 +7,11 @@ function Write-CP365LedgerEvent {
     )
 
     $context = Get-CP365CaseContext -CasePath $CasePath
-    $entries = if (Test-Path -LiteralPath $context.LedgerPath) {
-        @(Get-Content -LiteralPath $context.LedgerPath | Where-Object { $_ } | ConvertFrom-Json)
-    } else { @() }
+    $entries = @(
+        if (Test-Path -LiteralPath $context.LedgerPath) {
+            Get-Content -LiteralPath $context.LedgerPath | Where-Object { $_ } | ConvertFrom-Json
+        }
+    )
 
     $previousHash = if ($entries.Count) { [string]$entries[-1].entryHash } else { 'GENESIS' }
     $payloadHash = Get-CP365Hash -Text (ConvertTo-CP365CanonicalJson $Payload)
