@@ -17,7 +17,8 @@ function Write-CP365LedgerEvent {
     $payloadHash = Get-CP365Hash -Text (ConvertTo-CP365CanonicalJson $Payload)
     $body = [ordered]@{
         sequence     = $entries.Count + 1
-        timestampUtc = [DateTime]::UtcNow.ToString('o')
+        # Basic ISO 8601 stays a string across ConvertTo/From-Json on every supported PowerShell version.
+        timestampUtc = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmss.fffffffZ')
         eventType    = $EventType
         actor        = $Actor
         payload      = $Payload
