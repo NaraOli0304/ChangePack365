@@ -42,6 +42,10 @@ Describe 'ChangePack365 snapshot contract' {
         $summaries.Decision | Should -Contain 'STOP'
         Test-Path (Join-Path $case.Path 'public/summary-pt-BR.md') | Should -BeTrue
 
+        $report = Export-CP365HtmlReport -CasePath $case.Path
+        $report.Exists | Should -BeTrue
+        (Get-Content -LiteralPath $report.FullName -Raw) | Should -Match 'CP365-'
+
         Add-CP365Evidence -CasePath $case.Path -Phase before -Path (Join-Path $TestDrive 'before.json') | Out-Null
         Add-CP365Evidence -CasePath $case.Path -Phase after -Path (Join-Path $TestDrive 'after.json') | Out-Null
         $internal = Export-CP365Case -CasePath $case.Path
