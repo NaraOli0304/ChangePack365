@@ -1,5 +1,9 @@
 # ChangePack365
 
+[![test](https://github.com/NaraOli0304/ChangePack365/actions/workflows/test.yml/badge.svg)](https://github.com/NaraOli0304/ChangePack365/actions/workflows/test.yml)
+[![PowerShell 7.2+](https://img.shields.io/badge/PowerShell-7.2%2B-5391FE?logo=powershell)](https://learn.microsoft.com/powershell/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Make the change. Prove exactly what happened.**
 
 ChangePack365 is a PowerShell toolkit for tamper-evident Microsoft 365 change evidence. It does not try to become another posture scanner, baseline engine, or automatic remediator. It wraps the operational change itself: target confirmation, declared intent, before/after evidence, delta classification, privacy-safe sharing, and a verifiable chain of custody.
