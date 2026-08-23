@@ -52,7 +52,7 @@ function Compare-CP365Snapshot {
         expected   = @($changes | Where-Object classification -eq 'Expected').Count
         unexpected = @($changes | Where-Object classification -eq 'Unexpected').Count
         forbidden  = @($changes | Where-Object classification -eq 'Forbidden').Count
-        diffHash   = Get-CP365Hash -File $jsonPath
+        diffHash   = Get-CP365Hash -Path $jsonPath
     }
     Write-CP365LedgerEvent -CasePath $context.Root -EventType 'SnapshotsCompared' -Payload $summary | Out-Null
     [pscustomobject]@{ Summary = [pscustomobject]$summary; Changes = @($changes); JsonPath = $jsonPath; CsvPath = $csvPath }
