@@ -46,7 +46,7 @@ function New-CP365Case {
     }
     $contract | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $casePath 'contract.json') -Encoding utf8
     [guid]::NewGuid().Guid | Set-Content -LiteralPath (Join-Path $casePath '.redaction-salt') -Encoding utf8
-    Write-CP365LedgerEvent -CasePath $casePath -EventType 'CaseCreated' -Payload @{ contractHash = Get-CP365Hash -File (Join-Path $casePath 'contract.json'); fingerprint = $fingerprint } | Out-Null
+    Write-CP365LedgerEvent -CasePath $casePath -EventType 'CaseCreated' -Payload @{ contractHash = Get-CP365Hash -Path (Join-Path $casePath 'contract.json'); fingerprint = $fingerprint } | Out-Null
 
     [pscustomobject]@{ CaseId = $CaseId; Path = $casePath; Fingerprint = $fingerprint; Mode = $Mode }
 }
