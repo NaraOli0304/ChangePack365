@@ -10,11 +10,13 @@ function ConvertTo-CP365FlatMap {
         return $Map
     }
 
-    $properties = if ($InputObject -is [System.Collections.IDictionary]) {
-        @($InputObject.Keys | ForEach-Object { [pscustomobject]@{ Name = [string]$_; Value = $InputObject[$_] } })
-    } elseif ($InputObject -is [pscustomobject]) {
-        @($InputObject.PSObject.Properties)
-    } else { @() }
+    $properties = @(
+        if ($InputObject -is [System.Collections.IDictionary]) {
+            $InputObject.Keys | ForEach-Object { [pscustomobject]@{ Name = [string]$_; Value = $InputObject[$_] } }
+        } elseif ($InputObject -is [pscustomobject]) {
+            $InputObject.PSObject.Properties
+        }
+    )
 
     if ($properties.Count) {
         foreach ($property in $properties) {
