@@ -21,7 +21,7 @@ Add-CP365Evidence -CasePath $case.Path -Phase before -Path $beforePath | Out-Nul
 Add-CP365Evidence -CasePath $case.Path -Phase after -Path $afterPath | Out-Null
 $diff = Compare-CP365Snapshot -CasePath $case.Path -BeforePath $beforePath -AfterPath $afterPath
 $summaries = @(New-CP365StakeholderSummary -CasePath $case.Path)
-$report = Export-CP365HtmlReport -CasePath $case.Path
+$report = Export-CP365HtmlReport -CasePath $case.Path -Language 'pt-BR'
 $internal = Export-CP365Case -CasePath $case.Path
 $public = Export-CP365Case -CasePath $case.Path -Public
 
