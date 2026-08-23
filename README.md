@@ -24,6 +24,7 @@ The MVP introduces five opinionated controls:
 4. **Dual evidence packs** — internal output keeps full fidelity; public output pseudonymizes UPNs, GUIDs, and IPv4 addresses consistently within the case.
 5. **Honest results** — unexpected and forbidden deltas remain visible. The tool does not turn incomplete evidence into a green score.
 6. **Fact-bound summaries** — PT-BR, Spanish, and English stakeholder notes are rendered from the same structured delta, without asking an AI to invent impact or certainty.
+7. **Portable executive report** — a dependency-free HTML view turns the fingerprint, decision, timeline, and raw deltas into something stakeholders can inspect without PowerShell.
 
 ## What it is not
 
@@ -80,6 +81,7 @@ $result = Compare-CP365Snapshot `
   -AfterPath ./after.json
 
 New-CP365StakeholderSummary -CasePath $case.Path
+Export-CP365HtmlReport -CasePath $case.Path
 
 Test-CP365Ledger -CasePath $case.Path
 Export-CP365Case -CasePath $case.Path
