@@ -1,0 +1,33 @@
+{
+  "$schema": "../schemas/change-contract.schema.json",
+  "schemaVersion": "1.0",
+  "caseId": "CHG-2026-001",
+  "title": "Enable Conditional Access pilot policy",
+  "mode": "ReadOnly",
+  "target": {
+    "tenantId": "11111111-2222-4333-8444-555555555555",
+    "displayName": "Contoso Demo",
+    "account": "operator@contoso.example",
+    "cloud": "Global",
+    "fingerprint": "CP365-0000-0000-0000",
+    "workloads": ["EntraID"]
+  },
+  "expectedChanges": [
+    {
+      "path": "$.policies.PilotPolicy.state",
+      "operation": "Modified",
+      "description": "Move the pilot policy from report-only to enabled"
+    }
+  ],
+  "forbiddenChanges": [
+    {
+      "path": "$.policies.BreakGlass*",
+      "description": "Emergency access controls must not change"
+    }
+  ],
+  "approvals": [],
+  "privacy": {
+    "publicBundle": true,
+    "maskTypes": ["UPN", "GUID", "IPv4"]
+  }
+}

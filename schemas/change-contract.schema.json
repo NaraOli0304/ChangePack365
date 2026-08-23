@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NaraOli0304/ChangePack365/schemas/change-contract.schema.json",
+  "title": "ChangePack365 change contract",
+  "type": "object",
+  "required": ["schemaVersion", "caseId", "title", "mode", "target", "expectedChanges", "forbiddenChanges"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "caseId": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "title": { "type": "string", "minLength": 1 },
+    "mode": { "enum": ["ReadOnly", "ControlledWrite"] },
+    "target": {
+      "type": "object",
+      "required": ["tenantId", "displayName", "account", "cloud", "fingerprint", "workloads"],
+      "properties": {
+        "tenantId": { "type": "string", "format": "uuid" },
+        "displayName": { "type": "string" },
+        "account": { "type": "string" },
+        "cloud": { "enum": ["Global", "USGov", "China"] },
+        "fingerprint": { "type": "string", "pattern": "^CP365-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$" },
+        "workloads": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "expectedChanges": { "$ref": "#/$defs/changeRules" },
+    "forbiddenChanges": { "$ref": "#/$defs/changeRules" },
+    "approvals": { "type": "array" },
+    "privacy": { "type": "object" }
+  },
+  "$defs": {
+    "changeRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^\\$\\." },
+          "operation": { "enum": ["Added", "Removed", "Modified"] },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}
