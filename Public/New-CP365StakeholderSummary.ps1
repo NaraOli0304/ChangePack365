@@ -50,7 +50,7 @@ function New-CP365StakeholderSummary {
         languages = @($Language)
         decision = $decision
         counts = $counts
-        sourceHash = Get-CP365Hash -File $diffFile.FullName
+        sourceHash = Get-CP365Hash -Path $diffFile.FullName
     } | Out-Null
     $outputs
 }
