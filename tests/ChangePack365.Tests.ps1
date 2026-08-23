@@ -45,6 +45,7 @@ Describe 'ChangePack365 snapshot contract' {
         $report = Export-CP365HtmlReport -CasePath $case.Path
         $report.Exists | Should -BeTrue
         (Get-Content -LiteralPath $report.FullName -Raw) | Should -Match 'CP365-'
+        (Get-Content -LiteralPath $report.FullName -Raw) | Should -Match 'Cadeia de integridade verificada'
 
         Add-CP365Evidence -CasePath $case.Path -Phase before -Path (Join-Path $TestDrive 'before.json') | Out-Null
         Add-CP365Evidence -CasePath $case.Path -Phase after -Path (Join-Path $TestDrive 'after.json') | Out-Null
