@@ -88,6 +88,22 @@ Export-CP365Case -CasePath $case.Path
 Export-CP365Case -CasePath $case.Path -Public
 ```
 
+## Real Conditional Access snapshots
+
+The first provider adapter is read-only and validates the connected Graph tenant and account against the case fingerprint before collecting evidence.
+
+```powershell
+Connect-MgGraph -Scopes 'Policy.Read.All' -UseDeviceAuthentication
+
+$before = Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase before -PolicyId '<policy-guid>'
+# Perform the separately approved change.
+$after = Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase after -PolicyId '<policy-guid>'
+
+Compare-CP365Snapshot -CasePath $case.Path -BeforePath $before.Path -AfterPath $after.Path
+```
+
+See [the adapter safety boundary and setup](docs/graph-conditional-access.md).
+
 ## Safety model
 
 The default mode is `ReadOnly`. `ControlledWrite` does not perform a Microsoft 365 change by itself; it only unlocks the surrounding evidence session after:
@@ -106,7 +122,7 @@ This separation is deliberate. Adapters for Graph, Exchange Online, and Intune w
 - [x] Hash-chained ledger validation
 - [x] Internal and privacy-safe public bundles
 - [ ] Signed manifests with a user certificate
-- [ ] Graph snapshot adapter for Conditional Access
+- [x] Read-only Graph snapshot adapter for Conditional Access
 - [ ] Exchange Online DLP rule adapter
 - [ ] Intune device/policy adapter
 - [x] PT-BR, ES, and EN stakeholder summaries generated from structured facts

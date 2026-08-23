@@ -14,6 +14,7 @@
         'Compare-CP365Snapshot',
         'New-CP365StakeholderSummary',
         'Export-CP365HtmlReport',
+        'Save-CP365ConditionalAccessSnapshot',
         'Test-CP365Ledger',
         'Export-CP365Case'
     )

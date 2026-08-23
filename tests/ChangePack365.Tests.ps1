@@ -56,3 +56,52 @@ Describe 'ChangePack365 snapshot contract' {
         (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
     }
 }
+
+Describe 'Conditional Access Graph adapter' {
+    BeforeEach {
+        function global:Get-MgContext {
+            [pscustomobject]@{
+                TenantId = $script:Tenant
+                Account = 'one@contoso.example'
+                AuthType = 'Delegated'
+                Scopes = @('Policy.Read.All')
+            }
+        }
+        function global:Invoke-MgGraphRequest {
+            param([string]$Method, [string]$Uri)
+            if ($Uri -eq '/v1.0/identity/conditionalAccess/policies') {
+                return [pscustomobject]@{
+                    value = @([pscustomobject]@{ id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; displayName = 'Policy B'; state = 'enabled' })
+                    '@odata.nextLink' = 'https://graph.microsoft.com/v1.0/next-page'
+                }
+            }
+            [pscustomobject]@{
+                value = @([pscustomobject]@{ id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; displayName = 'Policy A'; state = 'disabled' })
+            }
+        }
+    }
+
+    AfterEach {
+        Remove-Item Function:\Get-MgContext -ErrorAction SilentlyContinue
+        Remove-Item Function:\Invoke-MgGraphRequest -ErrorAction SilentlyContinue
+    }
+
+    It 'collects every page and records read-only evidence in deterministic order' {
+        $case = New-CP365Case -CaseId 'TEST-GRAPH' -Title Test -TenantId $Tenant -TenantDisplayName Contoso -Account 'one@contoso.example' -RootPath $Root
+        $result = Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase before
+        $result.PolicyCount | Should -Be 2
+        $result.ReadOnly | Should -BeTrue
+        Test-Path -LiteralPath $result.Path | Should -BeTrue
+        $snapshot = Get-Content -LiteralPath $result.Path -Raw | ConvertFrom-Json -Depth 100
+        $snapshot.policies[0].displayName | Should -Be 'Policy A'
+        (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
+    }
+
+    It 'rejects a different connected tenant before calling Graph' {
+        $case = New-CP365Case -CaseId 'TEST-GRAPH-MISMATCH' -Title Test -TenantId $Tenant -TenantDisplayName Contoso -Account 'one@contoso.example' -RootPath $Root
+        function global:Get-MgContext {
+            [pscustomobject]@{ TenantId = '99999999-2222-4333-8444-555555555555'; Account = 'one@contoso.example'; AuthType = 'Delegated'; Scopes = @('Policy.Read.All') }
+        }
+        { Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase before } | Should -Throw '*tenant mismatch*'
+    }
+}
