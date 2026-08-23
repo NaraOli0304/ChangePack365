@@ -29,7 +29,7 @@ function Export-CP365Case {
             } else {
                 Copy-Item -LiteralPath $file.FullName -Destination $destination
             }
-            [pscustomobject]@{ path = $relative.Replace('\\', '/'); sha256 = Get-CP365Hash -File $destination; bytes = (Get-Item $destination).Length }
+            [pscustomobject]@{ path = $relative.Replace('\\', '/'); sha256 = Get-CP365Hash -Path $destination; bytes = (Get-Item $destination).Length }
         }
         $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding utf8
         $kind = if ($Public) { 'public' } else { 'internal' }
@@ -37,7 +37,7 @@ function Export-CP365Case {
         if ($PSCmdlet.ShouldProcess($zip, 'Export ChangePack365 bundle')) {
             if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
             Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
-            Write-CP365LedgerEvent -CasePath $context.Root -EventType 'CaseExported' -Payload @{ kind = $kind; file = Split-Path -Leaf $zip; sha256 = Get-CP365Hash -File $zip; ledgerHead = $ledger.HeadHash } | Out-Null
+            Write-CP365LedgerEvent -CasePath $context.Root -EventType 'CaseExported' -Payload @{ kind = $kind; file = Split-Path -Leaf $zip; sha256 = Get-CP365Hash -Path $zip; ledgerHead = $ledger.HeadHash } | Out-Null
             Get-Item $zip
         }
     } finally {
