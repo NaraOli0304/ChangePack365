@@ -7,7 +7,7 @@ $tenantId = '11111111-2222-4333-8444-555555555555'
 $expected = @(@{ path = '$.policies.PilotPolicy.state'; operation = 'Modified'; description = 'Move pilot policy from report-only to enabled' })
 $forbidden = @(@{ path = '$.policies.BreakGlass*'; description = 'Emergency access policy must not change' })
 $caseId = "DEMO-$([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss'))"
-$case = New-CP365Case -CaseId $caseId -Title 'Conditional Access pilot change' `
+$case = New-CP365Case -CaseId $caseId -Title 'Alteração piloto de Acesso Condicional' `
     -TenantId $tenantId -TenantDisplayName 'Contoso Demo' -Account 'operator@contoso.example' `
     -Workload EntraID -Mode ReadOnly -ExpectedChange $expected -ForbiddenChange $forbidden -RootPath $OutputRoot
 
