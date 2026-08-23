@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,11 +11,12 @@ permissions:
 jobs:
   pester:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Pester
         shell: pwsh
         run: Install-Module Pester -MinimumVersion 5.6.1 -Force -Scope CurrentUser
