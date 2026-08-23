@@ -13,6 +13,7 @@
         'Add-CP365Evidence',
         'Compare-CP365Snapshot',
         'New-CP365StakeholderSummary',
+        'Export-CP365HtmlReport',
         'Test-CP365Ledger',
         'Export-CP365Case'
     )
