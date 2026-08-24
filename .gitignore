@@ -1,5 +1,6 @@
 .change-pack/
 artifacts/
+demo-output/
 *.zip
 *.tar
 *.log
