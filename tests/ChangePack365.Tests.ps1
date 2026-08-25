@@ -105,3 +105,146 @@ Describe 'Conditional Access Graph adapter' {
         { Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase before } | Should -Throw '*tenant mismatch*'
     }
 }
+
+Describe 'ChangePack365 public bundle' {
+    It 'includes redacted stakeholder reports and portable manifest paths' {
+        $tenantId = '11111111-2222-4333-8444-555555555555'
+        $account = 'operator@contoso.example'
+        $sourceIp = '192.0.2.10'
+        $root = Join-Path $TestDrive 'public-bundle'
+
+        $expected = @(
+            @{
+                path = '$.policy.state'
+                operation = 'Modified'
+                description = 'Enable the pilot policy'
+            }
+        )
+
+        $case = New-CP365Case `
+            -CaseId 'PUBLIC-BUNDLE-TEST' `
+            -Title 'Public bundle test' `
+            -TenantId $tenantId `
+            -TenantDisplayName 'Contoso Test' `
+            -Account $account `
+            -Workload EntraID `
+            -Mode ReadOnly `
+            -ExpectedChange $expected `
+            -ForbiddenChange @() `
+            -RootPath $root
+
+        $beforeInput = Join-Path $TestDrive 'before-input.json'
+        $afterInput = Join-Path $TestDrive 'after-input.json'
+
+        @{
+            policy = @{
+                state = 'reportOnly'
+            }
+        } |
+            ConvertTo-Json -Depth 10 |
+            Set-Content -LiteralPath $beforeInput
+
+        @{
+            policy = @{
+                state = 'enabled'
+            }
+            metadata = @{
+                operator = $account
+                sourceIp = $sourceIp
+            }
+        } |
+            ConvertTo-Json -Depth 10 |
+            Set-Content -LiteralPath $afterInput
+
+        Add-CP365Evidence `
+            -CasePath $case.Path `
+            -Phase before `
+            -Path $beforeInput |
+            Out-Null
+
+        Add-CP365Evidence `
+            -CasePath $case.Path `
+            -Phase after `
+            -Path $afterInput |
+            Out-Null
+
+        Compare-CP365Snapshot `
+            -CasePath $case.Path `
+            -BeforePath $beforeInput `
+            -AfterPath $afterInput |
+            Out-Null
+
+        New-CP365StakeholderSummary `
+            -CasePath $case.Path |
+            Out-Null
+
+        Export-CP365HtmlReport `
+            -CasePath $case.Path `
+            -Language 'pt-BR' |
+            Out-Null
+
+        $bundle = Export-CP365Case `
+            -CasePath $case.Path `
+            -Public
+
+        $extractPath = Join-Path $TestDrive 'public-extracted'
+
+        Expand-Archive `
+            -LiteralPath $bundle.FullName `
+            -DestinationPath $extractPath
+
+        @(
+            'change-report.html',
+            'summary-en.md',
+            'summary-pt-BR.md',
+            'summary-es.md'
+        ) |
+            ForEach-Object {
+                Test-Path (
+                    Join-Path $extractPath "public/$_"
+                ) |
+                    Should -BeTrue
+            }
+
+        Test-Path (
+            Join-Path $extractPath '.redaction-salt'
+        ) |
+            Should -BeFalse
+
+        $publishedText = (
+            Get-ChildItem $extractPath -File -Recurse |
+            Where-Object Extension -In @(
+                '.json',
+                '.jsonl',
+                '.csv',
+                '.md',
+                '.html'
+            ) |
+            ForEach-Object {
+                Get-Content $_.FullName -Raw
+            }
+        ) -join "`n"
+
+        $publishedText |
+            Should -Not -Match ([regex]::Escape($tenantId))
+
+        $publishedText |
+            Should -Not -Match ([regex]::Escape($account))
+
+        $publishedText |
+            Should -Not -Match ([regex]::Escape($sourceIp))
+
+        $manifest = Get-Content `
+            (Join-Path $extractPath 'manifest.json') `
+            -Raw |
+            ConvertFrom-Json
+
+        $manifestPaths = @($manifest.path)
+
+        $manifestPaths |
+            Should -Contain 'public/change-report.html'
+
+        ($manifestPaths -join "`n") |
+            Should -Not -Match '\\'
+    }
+}
