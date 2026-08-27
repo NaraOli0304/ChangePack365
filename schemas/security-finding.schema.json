@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/changepack365/security-finding.schema.json",
+  "title": "ChangePack365 Security Finding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "findingId",
+    "title",
+    "severity",
+    "confidence",
+    "status",
+    "affectedPopulation",
+    "evidenceRefs",
+    "rootCause",
+    "recommendation"
+  ],
+  "properties": {
+    "findingId": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "severity": {"type": "string", "enum": ["Critical", "High", "Medium", "Low", "Informational"]},
+    "confidence": {"type": "string", "enum": ["High", "Medium", "Low"]},
+    "status": {"type": "string", "enum": ["Open", "Accepted", "InProgress", "Mitigated", "Closed", "Unknown"]},
+    "affectedPopulation": {"type": "integer", "minimum": 0},
+    "evidenceRefs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "fact": {"type": "string"},
+    "inference": {"type": "string"},
+    "hypothesis": {"type": "string"},
+    "rootCause": {"type": "string", "minLength": 1},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "recommendation": {"type": "string", "minLength": 1},
+    "owner": {"type": ["string", "null"]},
+    "firstObservedUtc": {"type": ["string", "null"], "format": "date-time"},
+    "lastObservedUtc": {"type": ["string", "null"], "format": "date-time"},
+    "analyticalScore": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+    "metadata": {"type": "object"}
+  }
+}
