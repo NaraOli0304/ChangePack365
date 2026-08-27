@@ -12,6 +12,7 @@ function Invoke-CP365GraphTimeSlicedRead {
         [datetime]$EndUtc,
 
         [Parameter(Mandatory)]
+        [ValidatePattern('^[A-Za-z_][A-Za-z0-9_.]*$')]
         [string]$DateProperty,
 
         [Parameter(Mandatory)]
@@ -30,6 +31,7 @@ function Invoke-CP365GraphTimeSlicedRead {
 
         [string]$AdditionalFilter,
 
+        [ValidatePattern('^[A-Za-z_][A-Za-z0-9_.]*$')]
         [string]$IdentityProperty = 'id',
 
         [ValidateRange(1, 10)]
@@ -49,6 +51,14 @@ function Invoke-CP365GraphTimeSlicedRead {
         throw 'MinimumWindowMinutes cannot exceed InitialWindowMinutes.'
     }
 
+    $parsedBaseUri = [uri]$BaseUri
+    if ($parsedBaseUri.Scheme -ne 'https' -or $parsedBaseUri.Host -ne 'graph.microsoft.com') {
+        throw 'BaseUri must use https://graph.microsoft.com/.'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($parsedBaseUri.Query)) {
+        throw 'BaseUri must not contain a query string. Use Select and AdditionalFilter parameters instead.'
+    }
+
     if (-not (Get-Command Invoke-MgGraphRequest -ErrorAction SilentlyContinue)) {
         throw 'Invoke-MgGraphRequest is required. Connect to Microsoft Graph before running this collector.'
     }
@@ -58,6 +68,24 @@ function Invoke-CP365GraphTimeSlicedRead {
     $results = [System.Collections.Generic.List[object]]::new()
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $manifest = [System.Collections.Generic.List[object]]::new()
+
+    $queryContract = @(
+        $BaseUri.TrimEnd('/'),
+        $DateProperty,
+        $Select,
+        $AdditionalFilter,
+        [string]$Top,
+        $IdentityProperty
+    ) -join "`n"
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $queryHashBytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($queryContract))
+    }
+    finally {
+        $sha.Dispose()
+    }
+    $queryFingerprint = (-join ($queryHashBytes | ForEach-Object { $_.ToString('x2') })).Substring(0, 16)
 
     function Get-CP365HttpStatusFromError {
         param([Parameter(Mandatory)]$ErrorRecord)
@@ -72,27 +100,58 @@ function Invoke-CP365GraphTimeSlicedRead {
         return $null
     }
 
+    function Get-CP365ObjectPropertyValue {
+        param(
+            [Parameter(Mandatory)]$InputObject,
+            [Parameter(Mandatory)][string]$PropertyName
+        )
+
+        if ($InputObject -is [System.Collections.IDictionary]) {
+            if ($InputObject.Contains($PropertyName)) {
+                return $InputObject[$PropertyName]
+            }
+            return $null
+        }
+
+        $property = $InputObject.PSObject.Properties[$PropertyName]
+        if ($null -ne $property) {
+            return $property.Value
+        }
+
+        return $null
+    }
+
+    function Add-CP365ResultIfUnique {
+        param([Parameter(Mandatory)]$Item)
+
+        $identity = [string](Get-CP365ObjectPropertyValue -InputObject $Item -PropertyName $IdentityProperty)
+        if ([string]::IsNullOrWhiteSpace($identity)) {
+            $results.Add($Item)
+            return
+        }
+
+        if ($seen.Add($identity)) {
+            $results.Add($Item)
+        }
+    }
+
     function Invoke-CP365Slice {
         param(
             [Parameter(Mandatory)][datetime]$SliceStart,
-            [Parameter(Mandatory)][datetime]$SliceEnd,
-            [Parameter(Mandatory)][int]$WindowMinutes
+            [Parameter(Mandatory)][datetime]$SliceEnd
         )
 
-        $tag = '{0}_{1}' -f $SliceStart.ToUniversalTime().ToString('yyyyMMdd-HHmmss'), $SliceEnd.ToUniversalTime().ToString('yyyyMMdd-HHmmss')
+        $tag = '{0}_{1}_{2}' -f $queryFingerprint, $SliceStart.ToUniversalTime().ToString('yyyyMMdd-HHmmss'), $SliceEnd.ToUniversalTime().ToString('yyyyMMdd-HHmmss')
         $checkpointPath = Join-Path $OutputDirectory ("slice_$tag.jsonl")
         $metaPath = Join-Path $OutputDirectory ("slice_$tag.meta.json")
 
         if ((Test-Path $checkpointPath) -and (Test-Path $metaPath)) {
             $meta = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
-            if ($meta.complete -eq $true) {
+            if (($meta.complete -eq $true) -and ([string]$meta.queryFingerprint -eq $queryFingerprint)) {
                 foreach ($line in Get-Content -LiteralPath $checkpointPath) {
                     if ([string]::IsNullOrWhiteSpace($line)) { continue }
                     $item = $line | ConvertFrom-Json
-                    $identity = [string]$item.$IdentityProperty
-                    if ([string]::IsNullOrWhiteSpace($identity) -or $seen.Add($identity)) {
-                        $results.Add($item)
-                    }
+                    Add-CP365ResultIfUnique -Item $item
                 }
                 $manifest.Add($meta)
                 return
@@ -159,19 +218,21 @@ function Invoke-CP365GraphTimeSlicedRead {
             $status = Get-CP365HttpStatusFromError -ErrorRecord $_
             $durationMinutes = ($SliceEnd - $SliceStart).TotalMinutes
 
-            if (($status -eq 410) -and ($durationMinutes -gt $MinimumWindowMinutes)) {
-                $halfMinutes = [math]::Max($MinimumWindowMinutes, [math]::Floor($durationMinutes / 2))
-                $mid = $SliceStart.AddMinutes($halfMinutes)
-                if ($mid -ge $SliceEnd) {
-                    throw
-                }
+            if ($status -eq 410) {
+                $halfDuration = [timespan]::FromTicks([long](($SliceEnd - $SliceStart).Ticks / 2))
+                $mid = $SliceStart + $halfDuration
+                $leftMinutes = ($mid - $SliceStart).TotalMinutes
+                $rightMinutes = ($SliceEnd - $mid).TotalMinutes
 
-                Invoke-CP365Slice -SliceStart $SliceStart -SliceEnd $mid -WindowMinutes $halfMinutes
-                Invoke-CP365Slice -SliceStart $mid -SliceEnd $SliceEnd -WindowMinutes $halfMinutes
-                return
+                if (($leftMinutes -ge $MinimumWindowMinutes) -and ($rightMinutes -ge $MinimumWindowMinutes)) {
+                    Invoke-CP365Slice -SliceStart $SliceStart -SliceEnd $mid
+                    Invoke-CP365Slice -SliceStart $mid -SliceEnd $SliceEnd
+                    return
+                }
             }
 
             $failureMeta = [ordered]@{
+                queryFingerprint = $queryFingerprint
                 startUtc = $SliceStart.ToUniversalTime().ToString('o')
                 endUtc = $SliceEnd.ToUniversalTime().ToString('o')
                 windowMinutes = $durationMinutes
@@ -185,19 +246,14 @@ function Invoke-CP365GraphTimeSlicedRead {
             throw
         }
 
-        if (Test-Path $checkpointPath) {
-            Remove-Item -LiteralPath $checkpointPath -Force
-        }
-
+        Set-Content -LiteralPath $checkpointPath -Value '' -Encoding UTF8
         foreach ($item in $sliceRows) {
             $item | ConvertTo-Json -Depth 20 -Compress | Add-Content -LiteralPath $checkpointPath -Encoding UTF8
-            $identity = [string]$item.$IdentityProperty
-            if ([string]::IsNullOrWhiteSpace($identity) -or $seen.Add($identity)) {
-                $results.Add($item)
-            }
+            Add-CP365ResultIfUnique -Item $item
         }
 
         $successMeta = [ordered]@{
+            queryFingerprint = $queryFingerprint
             startUtc = $SliceStart.ToUniversalTime().ToString('o')
             endUtc = $SliceEnd.ToUniversalTime().ToString('o')
             windowMinutes = ($SliceEnd - $SliceStart).TotalMinutes
@@ -217,19 +273,23 @@ function Invoke-CP365GraphTimeSlicedRead {
     while ($cursor -lt $final) {
         $sliceEnd = $cursor.AddMinutes($InitialWindowMinutes)
         if ($sliceEnd -gt $final) { $sliceEnd = $final }
-        Invoke-CP365Slice -SliceStart $cursor -SliceEnd $sliceEnd -WindowMinutes $InitialWindowMinutes
+        Invoke-CP365Slice -SliceStart $cursor -SliceEnd $sliceEnd
         $cursor = $sliceEnd
     }
 
-    $manifestPath = Join-Path $OutputDirectory 'collection-manifest.json'
+    $manifestPath = Join-Path $OutputDirectory ("collection-manifest_$queryFingerprint.json")
     $summary = [ordered]@{
         collectedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
         queryMode = 'GET_ONLY'
+        queryFingerprint = $queryFingerprint
         baseUri = $BaseUri
         dateProperty = $DateProperty
+        select = $Select
+        additionalFilter = $AdditionalFilter
+        identityProperty = $IdentityProperty
         startUtc = $StartUtc.ToUniversalTime().ToString('o')
         endUtc = $EndUtc.ToUniversalTime().ToString('o')
-        complete = (@($manifest | Where-Object { $_.complete -ne $true }).Count -eq 0)
+        complete = (($manifest.Count -gt 0) -and (@($manifest | Where-Object { $_.complete -ne $true }).Count -eq 0))
         uniqueRecordCount = $results.Count
         sliceCount = $manifest.Count
         slices = @($manifest)
@@ -250,5 +310,6 @@ function Invoke-CP365GraphTimeSlicedRead {
         SliceCount = $manifest.Count
         ManifestPath = $manifestPath
         QueryMode = 'GET_ONLY'
+        QueryFingerprint = $queryFingerprint
     }
 }
