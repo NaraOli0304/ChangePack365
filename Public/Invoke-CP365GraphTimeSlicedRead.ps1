@@ -1,0 +1,254 @@
+function Invoke-CP365GraphTimeSlicedRead {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidatePattern('^https://graph\.microsoft\.com/')]
+        [string]$BaseUri,
+
+        [Parameter(Mandatory)]
+        [datetime]$StartUtc,
+
+        [Parameter(Mandatory)]
+        [datetime]$EndUtc,
+
+        [Parameter(Mandatory)]
+        [string]$DateProperty,
+
+        [Parameter(Mandatory)]
+        [string]$OutputDirectory,
+
+        [ValidateRange(1, 1440)]
+        [int]$InitialWindowMinutes = 60,
+
+        [ValidateRange(1, 60)]
+        [int]$MinimumWindowMinutes = 5,
+
+        [ValidateRange(1, 999)]
+        [int]$Top = 999,
+
+        [string]$Select,
+
+        [string]$AdditionalFilter,
+
+        [string]$IdentityProperty = 'id',
+
+        [ValidateRange(1, 10)]
+        [int]$MaxTransientAttempts = 4,
+
+        [switch]$PassThru
+    )
+
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+
+    if ($EndUtc -le $StartUtc) {
+        throw 'EndUtc must be later than StartUtc.'
+    }
+
+    if ($MinimumWindowMinutes -gt $InitialWindowMinutes) {
+        throw 'MinimumWindowMinutes cannot exceed InitialWindowMinutes.'
+    }
+
+    if (-not (Get-Command Invoke-MgGraphRequest -ErrorAction SilentlyContinue)) {
+        throw 'Invoke-MgGraphRequest is required. Connect to Microsoft Graph before running this collector.'
+    }
+
+    $null = New-Item -ItemType Directory -Path $OutputDirectory -Force
+
+    $results = [System.Collections.Generic.List[object]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $manifest = [System.Collections.Generic.List[object]]::new()
+
+    function Get-CP365HttpStatusFromError {
+        param([Parameter(Mandatory)]$ErrorRecord)
+
+        $message = [string]$ErrorRecord.Exception.Message
+        if ($message -match 'HTTP/[^ ]+\s+(\d{3})') {
+            return [int]$Matches[1]
+        }
+        if ($message -match '\b(410|429|500|502|503|504)\b') {
+            return [int]$Matches[1]
+        }
+        return $null
+    }
+
+    function Invoke-CP365Slice {
+        param(
+            [Parameter(Mandatory)][datetime]$SliceStart,
+            [Parameter(Mandatory)][datetime]$SliceEnd,
+            [Parameter(Mandatory)][int]$WindowMinutes
+        )
+
+        $tag = '{0}_{1}' -f $SliceStart.ToUniversalTime().ToString('yyyyMMdd-HHmmss'), $SliceEnd.ToUniversalTime().ToString('yyyyMMdd-HHmmss')
+        $checkpointPath = Join-Path $OutputDirectory ("slice_$tag.jsonl")
+        $metaPath = Join-Path $OutputDirectory ("slice_$tag.meta.json")
+
+        if ((Test-Path $checkpointPath) -and (Test-Path $metaPath)) {
+            $meta = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
+            if ($meta.complete -eq $true) {
+                foreach ($line in Get-Content -LiteralPath $checkpointPath) {
+                    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                    $item = $line | ConvertFrom-Json
+                    $identity = [string]$item.$IdentityProperty
+                    if ([string]::IsNullOrWhiteSpace($identity) -or $seen.Add($identity)) {
+                        $results.Add($item)
+                    }
+                }
+                $manifest.Add($meta)
+                return
+            }
+        }
+
+        $startText = $SliceStart.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $endText = $SliceEnd.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $filter = "$DateProperty ge $startText and $DateProperty lt $endText"
+        if (-not [string]::IsNullOrWhiteSpace($AdditionalFilter)) {
+            $filter = "($filter) and ($AdditionalFilter)"
+        }
+
+        $query = '?$filter=' + [uri]::EscapeDataString($filter) + '&$top=' + $Top
+        if (-not [string]::IsNullOrWhiteSpace($Select)) {
+            $query += '&$select=' + [uri]::EscapeDataString($Select)
+        }
+        $uri = $BaseUri.TrimEnd('?') + $query
+
+        $sliceRows = [System.Collections.Generic.List[object]]::new()
+        $pageCount = 0
+        $requestCount = 0
+
+        try {
+            do {
+                $page = $null
+                for ($attempt = 1; $attempt -le $MaxTransientAttempts; $attempt++) {
+                    try {
+                        $requestCount++
+                        $page = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
+                        break
+                    }
+                    catch {
+                        $status = Get-CP365HttpStatusFromError -ErrorRecord $_
+
+                        if ($status -eq 410) {
+                            throw
+                        }
+
+                        if (($status -in @(429, 500, 502, 503, 504)) -and ($attempt -lt $MaxTransientAttempts)) {
+                            $delay = [math]::Min(30, [math]::Pow(2, $attempt))
+                            Start-Sleep -Seconds $delay
+                            continue
+                        }
+
+                        throw
+                    }
+                }
+
+                if ($null -eq $page) {
+                    throw 'Graph page was not returned.'
+                }
+
+                $pageCount++
+                foreach ($item in @($page['value'])) {
+                    $sliceRows.Add($item)
+                }
+
+                $uri = [string]$page['@odata.nextLink']
+            }
+            while (-not [string]::IsNullOrWhiteSpace($uri))
+        }
+        catch {
+            $status = Get-CP365HttpStatusFromError -ErrorRecord $_
+            $durationMinutes = ($SliceEnd - $SliceStart).TotalMinutes
+
+            if (($status -eq 410) -and ($durationMinutes -gt $MinimumWindowMinutes)) {
+                $halfMinutes = [math]::Max($MinimumWindowMinutes, [math]::Floor($durationMinutes / 2))
+                $mid = $SliceStart.AddMinutes($halfMinutes)
+                if ($mid -ge $SliceEnd) {
+                    throw
+                }
+
+                Invoke-CP365Slice -SliceStart $SliceStart -SliceEnd $mid -WindowMinutes $halfMinutes
+                Invoke-CP365Slice -SliceStart $mid -SliceEnd $SliceEnd -WindowMinutes $halfMinutes
+                return
+            }
+
+            $failureMeta = [ordered]@{
+                startUtc = $SliceStart.ToUniversalTime().ToString('o')
+                endUtc = $SliceEnd.ToUniversalTime().ToString('o')
+                windowMinutes = $durationMinutes
+                complete = $false
+                pageCount = $pageCount
+                requestCount = $requestCount
+                httpStatus = $status
+                error = [string]$_.Exception.Message
+            }
+            $failureMeta | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metaPath -Encoding UTF8
+            throw
+        }
+
+        if (Test-Path $checkpointPath) {
+            Remove-Item -LiteralPath $checkpointPath -Force
+        }
+
+        foreach ($item in $sliceRows) {
+            $item | ConvertTo-Json -Depth 20 -Compress | Add-Content -LiteralPath $checkpointPath -Encoding UTF8
+            $identity = [string]$item.$IdentityProperty
+            if ([string]::IsNullOrWhiteSpace($identity) -or $seen.Add($identity)) {
+                $results.Add($item)
+            }
+        }
+
+        $successMeta = [ordered]@{
+            startUtc = $SliceStart.ToUniversalTime().ToString('o')
+            endUtc = $SliceEnd.ToUniversalTime().ToString('o')
+            windowMinutes = ($SliceEnd - $SliceStart).TotalMinutes
+            complete = $true
+            recordCount = $sliceRows.Count
+            pageCount = $pageCount
+            requestCount = $requestCount
+            checkpoint = $checkpointPath
+        }
+        $successMeta | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metaPath -Encoding UTF8
+        $manifest.Add([pscustomobject]$successMeta)
+    }
+
+    $cursor = $StartUtc.ToUniversalTime()
+    $final = $EndUtc.ToUniversalTime()
+
+    while ($cursor -lt $final) {
+        $sliceEnd = $cursor.AddMinutes($InitialWindowMinutes)
+        if ($sliceEnd -gt $final) { $sliceEnd = $final }
+        Invoke-CP365Slice -SliceStart $cursor -SliceEnd $sliceEnd -WindowMinutes $InitialWindowMinutes
+        $cursor = $sliceEnd
+    }
+
+    $manifestPath = Join-Path $OutputDirectory 'collection-manifest.json'
+    $summary = [ordered]@{
+        collectedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        queryMode = 'GET_ONLY'
+        baseUri = $BaseUri
+        dateProperty = $DateProperty
+        startUtc = $StartUtc.ToUniversalTime().ToString('o')
+        endUtc = $EndUtc.ToUniversalTime().ToString('o')
+        complete = (@($manifest | Where-Object { $_.complete -ne $true }).Count -eq 0)
+        uniqueRecordCount = $results.Count
+        sliceCount = $manifest.Count
+        slices = @($manifest)
+    }
+    $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+    if ($PassThru) {
+        return [pscustomobject]@{
+            Records = @($results)
+            Manifest = [pscustomobject]$summary
+            ManifestPath = $manifestPath
+        }
+    }
+
+    return [pscustomobject]@{
+        Complete = $summary.complete
+        RecordCount = $results.Count
+        SliceCount = $manifest.Count
+        ManifestPath = $manifestPath
+        QueryMode = 'GET_ONLY'
+    }
+}
