@@ -271,6 +271,15 @@ Describe 'Invoke-CP365GraphTimeSlicedRead' {
             $failure.complete | Should -BeFalse
             $failure.httpStatus | Should -Be 429
             $failure.requestCount | Should -Be 3
+
+            $collectionManifest = Get-ChildItem $output -Filter 'collection-manifest_*.json' |
+                Select-Object -First 1 |
+                Get-Content -Raw |
+                ConvertFrom-Json
+            $collectionManifest.complete | Should -BeFalse
+            $collectionManifest.sliceCount | Should -Be 1
+            $collectionManifest.slices[0].complete | Should -BeFalse
+            $collectionManifest.slices[0].httpStatus | Should -Be 429
         }
     }
 

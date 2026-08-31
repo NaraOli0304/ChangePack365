@@ -16,6 +16,7 @@
         'Export-CP365HtmlReport',
         'Save-CP365ConditionalAccessSnapshot',
         'Invoke-CP365GraphTimeSlicedRead',
+        'New-CP365GraphEvidenceRecord',
         'Test-CP365Ledger',
         'Export-CP365Case'
     )

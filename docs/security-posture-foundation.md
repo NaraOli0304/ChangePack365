@@ -68,6 +68,18 @@ A `410` is not converted into success. If the collector reaches the configured m
 - SHA256;
 - optional tenant/account fingerprints.
 
+`New-CP365GraphEvidenceRecord` converts a collector manifest into this normalized contract. Before writing the record, it verifies the SHA-256 of every completed JSONL checkpoint and rejects checkpoints outside the manifest directory. The resulting record hashes the manifest, whose slice metadata contains the verified checkpoint hashes.
+
+```powershell
+$collection = Invoke-CP365GraphTimeSlicedRead @collectorParameters
+
+$evidence = New-CP365GraphEvidenceRecord `
+    -ManifestPath $collection.ManifestPath `
+    -Collection 'SignInLogs'
+```
+
+An incomplete manifest remains incomplete in the evidence record. A changed checkpoint, missing checkpoint hash, external checkpoint path, or inconsistent complete status fails closed. Manifests created before checkpoint hashes were introduced must be recollected; the tool does not retroactively claim integrity it cannot prove.
+
 ## Finding schema
 
 `schemas/security-finding.schema.json` defines a finding independently of any specific scanner. It captures:
