@@ -254,6 +254,7 @@ function Invoke-CP365GraphTimeSlicedRead {
                 error = [string]$_.Exception.Message
             }
             $failureMeta | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metaPath -Encoding UTF8
+            $manifest.Add([pscustomobject]$failureMeta)
             throw
         }
 
@@ -282,11 +283,17 @@ function Invoke-CP365GraphTimeSlicedRead {
     $cursor = $StartUtc.ToUniversalTime()
     $final = $EndUtc.ToUniversalTime()
 
-    while ($cursor -lt $final) {
-        $sliceEnd = $cursor.AddMinutes($InitialWindowMinutes)
-        if ($sliceEnd -gt $final) { $sliceEnd = $final }
-        Invoke-CP365Slice -SliceStart $cursor -SliceEnd $sliceEnd
-        $cursor = $sliceEnd
+    $collectionError = $null
+    try {
+        while ($cursor -lt $final) {
+            $sliceEnd = $cursor.AddMinutes($InitialWindowMinutes)
+            if ($sliceEnd -gt $final) { $sliceEnd = $final }
+            Invoke-CP365Slice -SliceStart $cursor -SliceEnd $sliceEnd
+            $cursor = $sliceEnd
+        }
+    }
+    catch {
+        $collectionError = $_
     }
 
     $manifestPath = Join-Path $OutputDirectory ("collection-manifest_$queryFingerprint.json")
@@ -307,6 +314,11 @@ function Invoke-CP365GraphTimeSlicedRead {
         slices = @($manifest)
     }
     $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+    if ($null -ne $collectionError) {
+        $collectionError.Exception.Data['ManifestPath'] = $manifestPath
+        throw $collectionError
+    }
 
     if ($PassThru) {
         return [pscustomobject]@{
