@@ -69,6 +69,36 @@ Describe 'Invoke-CP365GraphTimeSlicedRead' {
         }
     }
 
+    It 'rejects a pagination nextLink outside Microsoft Graph before another request' {
+        InModuleScope ChangePack365 {
+            $script:externalNextLinkCalls = 0
+            function Invoke-MgGraphRequest {
+                param($Method, $Uri, $ErrorAction)
+                $script:externalNextLinkCalls++
+                return @{
+                    value = @(
+                        @{ id = 'evt-1'; createdDateTime = '2026-01-01T00:01:00Z' }
+                    )
+                    '@odata.nextLink' = 'https://example.com/v1.0/auditLogs/signIns?page=2'
+                }
+            }
+
+            Mock Get-Command { @{ Name = 'Invoke-MgGraphRequest' } } -ParameterFilter { $Name -eq 'Invoke-MgGraphRequest' }
+
+            {
+                Invoke-CP365GraphTimeSlicedRead `
+                    -BaseUri 'https://graph.microsoft.com/v1.0/auditLogs/signIns' `
+                    -StartUtc ([datetime]'2026-01-01T00:00:00Z') `
+                    -EndUtc ([datetime]'2026-01-01T00:15:00Z') `
+                    -DateProperty 'createdDateTime' `
+                    -OutputDirectory (Join-Path $TestDrive 'external-next-link') `
+                    -InitialWindowMinutes 15
+            } | Should -Throw -ExpectedMessage '*pagination nextLink must use https://graph.microsoft.com/*'
+
+            $script:externalNextLinkCalls | Should -Be 1
+        }
+    }
+
     It 'deduplicates dictionary records by identity property when returning data' {
         InModuleScope ChangePack365 {
             function Invoke-MgGraphRequest {
