@@ -234,6 +234,49 @@ Describe 'Invoke-CP365GraphTimeSlicedRead' {
         }
     }
 
+    It 'retries each documented transient Graph server error' {
+        InModuleScope ChangePack365 {
+            Mock Get-Command { @{ Name = 'Invoke-MgGraphRequest' } } -ParameterFilter { $Name -eq 'Invoke-MgGraphRequest' }
+            Mock Start-Sleep {}
+
+            foreach ($status in @(500, 502, 503, 504)) {
+                $script:transientStatus = $status
+                $script:serverRetryCalls = 0
+
+                function Invoke-MgGraphRequest {
+                    param($Method, $Uri, $ErrorAction)
+                    $script:serverRetryCalls++
+                    if ($script:serverRetryCalls -eq 1) {
+                        throw "HTTP/1.1 $script:transientStatus Transient Server Error."
+                    }
+                    return @{
+                        value = @(
+                            @{
+                                id = "evt-after-$script:transientStatus"
+                                createdDateTime = '2026-01-01T00:01:00Z'
+                            }
+                        )
+                    }
+                }
+
+                $result = Invoke-CP365GraphTimeSlicedRead `
+                    -BaseUri 'https://graph.microsoft.com/v1.0/auditLogs/signIns' `
+                    -StartUtc ([datetime]'2026-01-01T00:00:00Z') `
+                    -EndUtc ([datetime]'2026-01-01T00:15:00Z') `
+                    -DateProperty 'createdDateTime' `
+                    -OutputDirectory (Join-Path $TestDrive "retry-$status") `
+                    -InitialWindowMinutes 15 `
+                    -MaxTransientAttempts 3
+
+                $result.Complete | Should -BeTrue
+                $result.RecordCount | Should -Be 1
+                $script:serverRetryCalls | Should -Be 2
+            }
+
+            Should -Invoke Start-Sleep -Times 4 -Exactly
+        }
+    }
+
     It 'does not retry a permanent Graph error' {
         InModuleScope ChangePack365 {
             $script:permanentErrorCalls = 0
