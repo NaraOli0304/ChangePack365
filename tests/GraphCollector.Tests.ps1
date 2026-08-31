@@ -4,6 +4,16 @@ BeforeAll {
 }
 
 Describe 'Invoke-CP365GraphTimeSlicedRead' {
+    It 'is exported by the module manifest' {
+        $command = Get-Command `
+            -Name 'Invoke-CP365GraphTimeSlicedRead' `
+            -Module 'ChangePack365' `
+            -ErrorAction Stop
+
+        $command.Name | Should -Be 'Invoke-CP365GraphTimeSlicedRead'
+        $command.CommandType | Should -Be 'Function'
+    }
+
     It 'rejects non-Microsoft Graph base URIs' {
         {
             Invoke-CP365GraphTimeSlicedRead `
