@@ -273,6 +273,7 @@ function Invoke-CP365GraphTimeSlicedRead {
             pageCount = $pageCount
             requestCount = $requestCount
             checkpoint = $checkpointPath
+            checkpointSha256 = Get-CP365Hash -Path $checkpointPath
         }
         $successMeta | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metaPath -Encoding UTF8
         $manifest.Add([pscustomobject]$successMeta)
