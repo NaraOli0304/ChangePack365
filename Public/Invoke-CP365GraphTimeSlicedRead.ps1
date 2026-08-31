@@ -210,7 +210,18 @@ function Invoke-CP365GraphTimeSlicedRead {
                     $sliceRows.Add($item)
                 }
 
-                $uri = [string]$page['@odata.nextLink']
+                $nextLink = [string]$page['@odata.nextLink']
+                if (-not [string]::IsNullOrWhiteSpace($nextLink)) {
+                    $parsedNextLink = [uri]$nextLink
+                    if (
+                        -not $parsedNextLink.IsAbsoluteUri -or
+                        $parsedNextLink.Scheme -ne 'https' -or
+                        $parsedNextLink.Host -ne 'graph.microsoft.com'
+                    ) {
+                        throw 'Graph pagination nextLink must use https://graph.microsoft.com/.'
+                    }
+                }
+                $uri = $nextLink
             }
             while (-not [string]::IsNullOrWhiteSpace($uri))
         }
