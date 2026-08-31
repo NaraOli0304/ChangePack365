@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/changepack365/evidence-record.schema.json",
+  "title": "ChangePack365 Evidence Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidenceId",
+    "source",
+    "collection",
+    "collectedAtUtc",
+    "queryMode",
+    "complete",
+    "artifactPath",
+    "sha256"
+  ],
+  "properties": {
+    "evidenceId": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "collection": {"type": "string", "minLength": 1},
+    "collectedAtUtc": {"type": "string", "format": "date-time"},
+    "queryMode": {"type": "string", "enum": ["GET_ONLY", "GET_BATCH", "LOCAL_ONLY", "OTHER_READ_ONLY"]},
+    "complete": {"type": "boolean"},
+    "completenessNote": {"type": ["string", "null"]},
+    "artifactPath": {"type": "string", "minLength": 1},
+    "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "recordCount": {"type": ["integer", "null"], "minimum": 0},
+    "failedObjectCount": {"type": ["integer", "null"], "minimum": 0},
+    "windowStartUtc": {"type": ["string", "null"], "format": "date-time"},
+    "windowEndUtc": {"type": ["string", "null"], "format": "date-time"},
+    "tenantFingerprint": {"type": ["string", "null"]},
+    "accountFingerprint": {"type": ["string", "null"]},
+    "notes": {"type": "array", "items": {"type": "string"}},
+    "metadata": {"type": "object"}
+  }
+}
