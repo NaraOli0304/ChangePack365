@@ -99,6 +99,7 @@ function Export-CP365Case {
             $contentInfo = [System.Security.Cryptography.Pkcs.ContentInfo]::new($manifestBytes)
             $signedCms = [System.Security.Cryptography.Pkcs.SignedCms]::new($contentInfo, $true)
             $cmsSigner = [System.Security.Cryptography.Pkcs.CmsSigner]::new($SigningCertificate)
+            $cmsSigner.IncludeOption = [Security.Cryptography.X509Certificates.X509IncludeOption]::EndCertOnly
             $cmsSigner.DigestAlgorithm = [Security.Cryptography.Oid]::new(
                 '2.16.840.1.101.3.4.2.1'
             )
