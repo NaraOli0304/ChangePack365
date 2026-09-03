@@ -11,6 +11,7 @@
         'Get-CP365ContextFingerprint',
         'Confirm-CP365WriteContext',
         'Add-CP365Evidence',
+        'Add-CP365GraphEvidenceRecord',
         'Compare-CP365Snapshot',
         'New-CP365StakeholderSummary',
         'Export-CP365HtmlReport',

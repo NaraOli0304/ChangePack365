@@ -80,6 +80,16 @@ $evidence = New-CP365GraphEvidenceRecord `
 
 An incomplete manifest remains incomplete in the evidence record. A changed checkpoint, missing checkpoint hash, external checkpoint path, or inconsistent complete status fails closed. Manifests created before checkpoint hashes were introduced must be recollected; the tool does not retroactively claim integrity it cannot prove.
 
+`Add-CP365GraphEvidenceRecord` registers the record as a portable case artifact. It verifies the source chain again, copies every completed checkpoint through `Add-CP365Evidence`, rewrites checkpoint paths to case-relative names, recomputes the portable manifest hash, updates the copied record, and appends a final `GraphEvidenceRegistered` ledger event only after every file has been added.
+
+```powershell
+$registered = Add-CP365GraphEvidenceRecord `
+    -CasePath $case.Path `
+    -RecordPath $evidence.Path
+```
+
+Existing destination names are never overwritten. If registration stops between file additions, the individual `EvidenceAdded` ledger entries preserve the partial state and the final registration event is absent.
+
 ## Finding schema
 
 `schemas/security-finding.schema.json` defines a finding independently of any specific scanner. It captures:
