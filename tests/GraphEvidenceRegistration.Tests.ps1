@@ -106,6 +106,12 @@ Describe 'Add-CP365GraphEvidenceRecord' {
         $ledger[-1].eventType | Should -Be 'GraphEvidenceRegistered'
         $ledger[-1].payload.complete | Should -BeTrue
         $ledger[-1].payload.checkpointCount | Should -Be 1
+        $ledger[-1].payload.recordSha256 | Should -Be (
+            Get-FileHash $result.RecordPath -Algorithm SHA256
+        ).Hash.ToLowerInvariant()
+        $ledger[-1].payload.manifestSha256 | Should -Be (
+            Get-FileHash $result.ManifestPath -Algorithm SHA256
+        ).Hash.ToLowerInvariant()
         (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
     }
 
