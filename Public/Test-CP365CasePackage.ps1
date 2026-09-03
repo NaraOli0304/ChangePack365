@@ -3,7 +3,9 @@ function Test-CP365CasePackage {
     param(
         [Parameter(Mandatory)]
         [ValidateScript({ Test-Path -LiteralPath $_ })]
-        [string]$PackagePath
+        [string]$PackagePath,
+
+        [string]$ExpectedSignerThumbprint
     )
 
     Set-StrictMode -Version Latest
@@ -18,6 +20,25 @@ function Test-CP365CasePackage {
     $ledgerEntries = 0
     $ledgerHead = $null
     $status = 'Invalid'
+    $signatureStatus = 'NotSigned'
+    $signerThumbprint = $null
+    $signerSubject = $null
+    $authenticityEstablished = $false
+
+    $normalizedExpectedThumbprint = if (
+        -not [string]::IsNullOrWhiteSpace($ExpectedSignerThumbprint)
+    ) {
+        $ExpectedSignerThumbprint.Replace(' ', '').ToUpperInvariant()
+    }
+    else {
+        $null
+    }
+    if (
+        $null -ne $normalizedExpectedThumbprint -and
+        $normalizedExpectedThumbprint -notmatch '^[A-F0-9]{32,128}$'
+    ) {
+        throw 'ExpectedSignerThumbprint must contain 32 to 128 hexadecimal characters.'
+    }
 
     function Test-CP365SafeRelativePath {
         param([Parameter(Mandatory)][string]$Path)
@@ -162,12 +183,23 @@ function Test-CP365CasePackage {
             $filesChecked++
         }
 
+        $declaredSignatureFile = $null
+        if (
+            $bundle.PSObject.Properties['signature'] -and
+            $null -ne $bundle.signature
+        ) {
+            $declaredSignatureFile = [string]$bundle.signature.file
+        }
+
         $actualPaths = @(
             Get-ChildItem -LiteralPath $root -File -Recurse -Force |
                 ForEach-Object {
                     [IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/')
                 } |
-                Where-Object { $_ -ne 'manifest.json' }
+                Where-Object {
+                    $_ -ne 'manifest.json' -and
+                    $_ -ne $declaredSignatureFile
+                }
         )
         foreach ($actualPath in $actualPaths) {
             if (-not $manifestPaths.Contains($actualPath)) {
@@ -177,6 +209,92 @@ function Test-CP365CasePackage {
 
         if (-not $manifestPaths.Contains('bundle.json')) {
             $errors.Add('bundle.json is not covered by the package manifest.')
+        }
+
+        if ($errors.Count -eq 0 -and $null -ne $declaredSignatureFile) {
+            if (-not (Test-CP365SafeRelativePath -Path $declaredSignatureFile)) {
+                $errors.Add("Unsafe signature path: $declaredSignatureFile")
+            }
+            elseif (
+                [string]$bundle.signature.format -ne 'CMS/PKCS7' -or
+                [string]$bundle.signature.digestAlgorithm -ne 'SHA256'
+            ) {
+                $errors.Add('Unsupported manifest signature metadata.')
+            }
+            elseif ($manifestPaths.Contains($declaredSignatureFile)) {
+                $errors.Add('Detached signature must not be listed inside the signed manifest.')
+            }
+            else {
+                $signaturePath = Join-Path $root $declaredSignatureFile
+                if (-not (Test-Path -LiteralPath $signaturePath -PathType Leaf)) {
+                    $errors.Add("Declared signature file is missing: $declaredSignatureFile")
+                }
+                else {
+                    try {
+                        Add-Type -AssemblyName System.Security.Cryptography.Pkcs
+                        $manifestBytes = [IO.File]::ReadAllBytes($manifestPath)
+                        $contentInfo = [System.Security.Cryptography.Pkcs.ContentInfo]::new(
+                            $manifestBytes
+                        )
+                        $signedCms = [System.Security.Cryptography.Pkcs.SignedCms]::new(
+                            $contentInfo,
+                            $true
+                        )
+                        $signedCms.Decode([IO.File]::ReadAllBytes($signaturePath))
+                        if ($signedCms.SignerInfos.Count -ne 1) {
+                            throw 'Manifest signature must contain exactly one signer.'
+                        }
+                        $signedCms.CheckSignature($true)
+                        $signerCertificate = $signedCms.SignerInfos[0].Certificate
+                        if ($null -eq $signerCertificate) {
+                            throw 'Manifest signature does not embed the signer certificate.'
+                        }
+
+                        $signerThumbprint = $signerCertificate.Thumbprint.Replace(
+                            ' ',
+                            ''
+                        ).ToUpperInvariant()
+                        $signerSubject = $signerCertificate.Subject
+                        $declaredThumbprint = (
+                            [string]$bundle.signature.signerThumbprint
+                        ).Replace(' ', '').ToUpperInvariant()
+                        if ($signerThumbprint -ne $declaredThumbprint) {
+                            throw 'Signer certificate does not match bundle metadata.'
+                        }
+
+                        $signatureStatus = 'Valid'
+                        if ($null -ne $normalizedExpectedThumbprint) {
+                            if ($signerThumbprint -ne $normalizedExpectedThumbprint) {
+                                $signatureStatus = 'ExpectedSignerMismatch'
+                                $errors.Add(
+                                    'Signer certificate does not match the expected thumbprint.'
+                                )
+                            }
+                            else {
+                                $authenticityEstablished = $true
+                            }
+                        }
+                        else {
+                            $warnings.Add(
+                                'Signature is valid, but signer identity was not anchored with an expected thumbprint.'
+                            )
+                        }
+                    }
+                    catch {
+                        if ($signatureStatus -ne 'ExpectedSignerMismatch') {
+                            $signatureStatus = 'Invalid'
+                            $errors.Add("Manifest signature: $($_.Exception.Message)")
+                        }
+                    }
+                }
+            }
+        }
+        elseif (
+            $errors.Count -eq 0 -and
+            $null -ne $normalizedExpectedThumbprint
+        ) {
+            $signatureStatus = 'Missing'
+            $errors.Add('ExpectedSignerThumbprint requires a signed manifest.')
         }
 
         if ($errors.Count -eq 0 -and [string]$bundle.kind -eq 'public') {
@@ -263,6 +381,10 @@ function Test-CP365CasePackage {
         FilesChecked = $filesChecked
         LedgerEntries = $ledgerEntries
         LedgerHead = $ledgerHead
+        SignatureStatus = $signatureStatus
+        SignerThumbprint = $signerThumbprint
+        SignerSubject = $signerSubject
+        AuthenticityEstablished = $authenticityEstablished
         Errors = @($errors)
         Warnings = @($warnings)
     }
