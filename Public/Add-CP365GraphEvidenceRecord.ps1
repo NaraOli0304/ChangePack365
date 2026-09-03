@@ -191,16 +191,19 @@ function Add-CP365GraphEvidenceRecord {
             ConvertTo-Json -Depth 100 |
             Set-Content -LiteralPath $portableRecordPath -Encoding utf8
 
-        $addedCheckpoints = @(
-            foreach ($checkpoint in $checkpoints) {
-                Add-CP365Evidence `
-                    -CasePath $context.Root `
-                    -Phase $Phase `
-                    -Path $checkpoint.Source `
-                    -Name $checkpoint.Name `
-                    -Confirm:$false
+        $addedCheckpoints = [System.Collections.Generic.List[object]]::new()
+        foreach ($checkpoint in $checkpoints) {
+            $addedCheckpoint = Add-CP365Evidence `
+                -CasePath $context.Root `
+                -Phase $Phase `
+                -Path $checkpoint.Source `
+                -Name $checkpoint.Name `
+                -Confirm:$false
+            if ($addedCheckpoint.Sha256 -ne $checkpoint.Sha256) {
+                throw "Checkpoint '$($checkpoint.Name)' changed during registration."
             }
-        )
+            $addedCheckpoints.Add($addedCheckpoint)
+        }
         $addedManifest = Add-CP365Evidence `
             -CasePath $context.Root `
             -Phase $Phase `
