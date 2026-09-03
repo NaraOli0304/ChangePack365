@@ -3,8 +3,21 @@ function Export-CP365Case {
     param(
         [Parameter(Mandatory)][string]$CasePath,
         [string]$OutputPath,
-        [switch]$Public
+        [switch]$Public,
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]$SigningCertificate
     )
+
+    if ($null -ne $SigningCertificate) {
+        if (-not $SigningCertificate.HasPrivateKey) {
+            throw 'SigningCertificate must include a private key.'
+        }
+
+        $now = [datetime]::UtcNow
+        if ($now -lt $SigningCertificate.NotBefore.ToUniversalTime() -or
+            $now -gt $SigningCertificate.NotAfter.ToUniversalTime()) {
+            throw 'SigningCertificate is not currently valid.'
+        }
+    }
 
     $context = Get-CP365CaseContext -CasePath $CasePath
     $ledger = Test-CP365Ledger -CasePath $context.Root
@@ -42,11 +55,28 @@ function Export-CP365Case {
             })
         }
 
+        $signerThumbprint = if ($null -ne $SigningCertificate) {
+            $SigningCertificate.Thumbprint.Replace(' ', '').ToUpperInvariant()
+        }
+        else {
+            $null
+        }
         $bundleMetadata = [ordered]@{
             formatVersion = 1
             kind = $kind
             caseId = [string]$context.Contract.caseId
             ledgerHead = [string]$ledger.HeadHash
+            signature = if ($null -ne $SigningCertificate) {
+                [ordered]@{
+                    format = 'CMS/PKCS7'
+                    file = 'manifest.p7s'
+                    digestAlgorithm = 'SHA256'
+                    signerThumbprint = $signerThumbprint
+                }
+            }
+            else {
+                $null
+            }
         }
         $bundlePath = Join-Path $stage 'bundle.json'
         $bundleMetadata |
@@ -58,9 +88,27 @@ function Export-CP365Case {
             bytes = (Get-Item $bundlePath).Length
         })
 
+        $manifestPath = Join-Path $stage 'manifest.json'
         $manifest |
             ConvertTo-Json -Depth 10 |
-            Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding utf8
+            Set-Content -LiteralPath $manifestPath -Encoding utf8
+
+        if ($null -ne $SigningCertificate) {
+            Add-Type -AssemblyName System.Security.Cryptography.Pkcs
+            $manifestBytes = [IO.File]::ReadAllBytes($manifestPath)
+            $contentInfo = [System.Security.Cryptography.Pkcs.ContentInfo]::new($manifestBytes)
+            $signedCms = [System.Security.Cryptography.Pkcs.SignedCms]::new($contentInfo, $true)
+            $cmsSigner = [System.Security.Cryptography.Pkcs.CmsSigner]::new($SigningCertificate)
+            $cmsSigner.DigestAlgorithm = [Security.Cryptography.Oid]::new(
+                '2.16.840.1.101.3.4.2.1'
+            )
+            $signedCms.ComputeSignature($cmsSigner, $true)
+            [IO.File]::WriteAllBytes(
+                (Join-Path $stage 'manifest.p7s'),
+                $signedCms.Encode()
+            )
+        }
+
         $zip = Join-Path $output "$($context.Contract.caseId)-$kind.zip"
         if ($PSCmdlet.ShouldProcess($zip, 'Export ChangePack365 bundle')) {
             if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
