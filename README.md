@@ -107,7 +107,27 @@ The verifier rejects unsafe ZIP paths and links, then checks the exact file inve
 - `Incomplete` — integrity is valid, but structured evidence explicitly reports incomplete collection;
 - `Unsupported` — the package type is intentionally outside the current trust boundary.
 
-Public bundles currently return `Unsupported` because redaction transforms ledger content. Offline verification also does not prove who produced a package: producer authenticity requires the planned signed-manifest capability.
+Public bundles currently return `Unsupported` because redaction transforms ledger content.
+
+### Signed manifests
+
+Pass an X.509 certificate with a private key to create a detached CMS/PKCS#7 signature over the exact bytes of `manifest.json`:
+
+```powershell
+$certificate = Get-Item 'Cert:/CurrentUser/My/<thumbprint>'
+
+$bundle = Export-CP365Case `
+  -CasePath $case.Path `
+  -SigningCertificate $certificate
+
+$result = Test-CP365CasePackage `
+  -PackagePath $bundle.FullName `
+  -ExpectedSignerThumbprint $certificate.Thumbprint
+```
+
+`SignatureStatus = Valid` proves that the manifest matches the embedded signer certificate. `AuthenticityEstablished = True` additionally proves that its thumbprint matches the value supplied independently by the verifier.
+
+This does not validate certificate-chain trust and does not provide a trusted signing timestamp. Operators must obtain the expected thumbprint through a separate trusted channel and protect the private key. Without `ExpectedSignerThumbprint`, the verifier reports a cryptographically valid but unanchored signer and does not claim identity.
 
 ## Real Conditional Access snapshots
 
@@ -143,7 +163,7 @@ This separation is deliberate. Adapters for Graph, Exchange Online, and Intune w
 - [x] Hash-chained ledger validation
 - [x] Internal and privacy-safe public bundles
 - [x] Offline verification for internal bundles
-- [ ] Signed manifests with a user certificate
+- [x] Signed manifests with a user certificate
 - [x] Read-only Graph snapshot adapter for Conditional Access
 - [ ] Exchange Online DLP rule adapter
 - [ ] Intune device/policy adapter
