@@ -100,6 +100,86 @@ function Invoke-CP365GraphTimeSlicedRead {
         return $null
     }
 
+    function Get-CP365RetryAfterSeconds {
+        param([Parameter(Mandatory)]$ErrorRecord)
+
+        $responseProperty = $ErrorRecord.Exception.PSObject.Properties['Response']
+        if ($null -eq $responseProperty -or $null -eq $responseProperty.Value) {
+            return $null
+        }
+
+        $headersProperty = $responseProperty.Value.PSObject.Properties['Headers']
+        if ($null -eq $headersProperty -or $null -eq $headersProperty.Value) {
+            return $null
+        }
+
+        $headers = $headersProperty.Value
+        $rawValue = $null
+        if ($headers -is [System.Collections.IDictionary]) {
+            if ($headers.Contains('Retry-After')) {
+                $rawValue = $headers['Retry-After']
+            }
+        }
+        else {
+            $retryAfterProperty = $headers.PSObject.Properties['RetryAfter']
+            if ($null -ne $retryAfterProperty) {
+                $retryAfter = $retryAfterProperty.Value
+                if ($null -ne $retryAfter) {
+                    $deltaProperty = $retryAfter.PSObject.Properties['Delta']
+                    if ($null -ne $deltaProperty -and $null -ne $deltaProperty.Value) {
+                        return [int][math]::Ceiling(([timespan]$deltaProperty.Value).TotalSeconds)
+                    }
+
+                    $dateProperty = $retryAfter.PSObject.Properties['Date']
+                    if ($null -ne $dateProperty -and $null -ne $dateProperty.Value) {
+                        $remaining = ([datetimeoffset]$dateProperty.Value) - [datetimeoffset]::UtcNow
+                        return [int][math]::Max(0, [math]::Ceiling($remaining.TotalSeconds))
+                    }
+
+                    $rawValue = $retryAfter
+                }
+            }
+
+            if ($null -eq $rawValue) {
+                $rawHeaderProperty = $headers.PSObject.Properties['Retry-After']
+                if ($null -ne $rawHeaderProperty) {
+                    $rawValue = $rawHeaderProperty.Value
+                }
+            }
+        }
+
+        $rawValue = @($rawValue)[0]
+        $seconds = 0
+        if (
+            $null -ne $rawValue -and
+            [int]::TryParse(
+                [string]$rawValue,
+                [System.Globalization.NumberStyles]::Integer,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$seconds
+            ) -and
+            $seconds -ge 0
+        ) {
+            return $seconds
+        }
+
+        $retryDate = [datetimeoffset]::MinValue
+        if (
+            $null -ne $rawValue -and
+            [datetimeoffset]::TryParse(
+                [string]$rawValue,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::AssumeUniversal,
+                [ref]$retryDate
+            )
+        ) {
+            $remaining = $retryDate - [datetimeoffset]::UtcNow
+            return [int][math]::Max(0, [math]::Ceiling($remaining.TotalSeconds))
+        }
+
+        return $null
+    }
+
     function Get-CP365ObjectPropertyValue {
         param(
             [Parameter(Mandatory)]$InputObject,
@@ -192,7 +272,18 @@ function Invoke-CP365GraphTimeSlicedRead {
                         }
 
                         if (($status -in @(429, 500, 502, 503, 504)) -and ($attempt -lt $MaxTransientAttempts)) {
-                            $delay = [math]::Min(30, [math]::Pow(2, $attempt))
+                            $retryAfterSeconds = if ($status -eq 429) {
+                                Get-CP365RetryAfterSeconds -ErrorRecord $_
+                            }
+                            else {
+                                $null
+                            }
+                            $delay = if ($null -ne $retryAfterSeconds) {
+                                $retryAfterSeconds
+                            }
+                            else {
+                                [math]::Min(30, [math]::Pow(2, $attempt))
+                            }
                             Start-Sleep -Seconds $delay
                             continue
                         }
