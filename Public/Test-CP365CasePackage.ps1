@@ -35,7 +35,10 @@ function Test-CP365CasePackage {
     }
     if (
         $null -ne $normalizedExpectedThumbprint -and
-        $normalizedExpectedThumbprint -notmatch '^[A-F0-9]{32,128}
+        $normalizedExpectedThumbprint -notmatch '^[A-F0-9]{32,128}$'
+    ) {
+        throw 'ExpectedSignerThumbprint must contain 32 to 128 hexadecimal characters.'
+    }
 
     function Test-CP365SafeRelativePath {
         param([Parameter(Mandatory)][string]$Path)
