@@ -238,6 +238,46 @@ Describe 'Invoke-CP365GraphTimeSlicedRead' {
         }
     }
 
+    It 'honors Retry-After seconds for a throttled request' {
+        InModuleScope ChangePack365 {
+            $script:retryAfterGraphCalls = 0
+            function Invoke-MgGraphRequest {
+                param($Method, $Uri, $ErrorAction)
+                $script:retryAfterGraphCalls++
+                if ($script:retryAfterGraphCalls -eq 1) {
+                    $exception = [System.Exception]::new('HTTP/1.1 429 Too Many Requests.')
+                    $response = [pscustomobject]@{
+                        Headers = @{ 'Retry-After' = '7' }
+                    }
+                    $exception | Add-Member -MemberType NoteProperty -Name Response -Value $response
+                    throw $exception
+                }
+                return @{
+                    value = @(
+                        @{ id = 'evt-after-retry-after'; createdDateTime = '2026-01-01T00:01:00Z' }
+                    )
+                }
+            }
+
+            Mock Get-Command { @{ Name = 'Invoke-MgGraphRequest' } } -ParameterFilter { $Name -eq 'Invoke-MgGraphRequest' }
+            Mock Start-Sleep {}
+
+            $result = Invoke-CP365GraphTimeSlicedRead `
+                -BaseUri 'https://graph.microsoft.com/v1.0/auditLogs/signIns' `
+                -StartUtc ([datetime]'2026-01-01T00:00:00Z') `
+                -EndUtc ([datetime]'2026-01-01T00:15:00Z') `
+                -DateProperty 'createdDateTime' `
+                -OutputDirectory (Join-Path $TestDrive 'retry-after') `
+                -InitialWindowMinutes 15 `
+                -MaxTransientAttempts 3
+
+            $result.Complete | Should -BeTrue
+            $result.RecordCount | Should -Be 1
+            $script:retryAfterGraphCalls | Should -Be 2
+            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 7 }
+        }
+    }
+
     It 'stops retrying a throttled request at the configured attempt limit' {
         InModuleScope ChangePack365 {
             $script:limitedRetryCalls = 0
