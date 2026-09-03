@@ -24,7 +24,9 @@ function Export-CP365Case {
             $relative = [IO.Path]::GetRelativePath($context.Root, $_.FullName)
             ($relative -ne '.redaction-salt') -and ($excludedRoots -notcontains ($relative -split '[\\/]')[0])
         }
-        $manifest = foreach ($file in $files) {
+        $kind = if ($Public) { 'public' } else { 'internal' }
+        $manifest = [System.Collections.Generic.List[object]]::new()
+        foreach ($file in $files) {
             $relative = [IO.Path]::GetRelativePath($context.Root, $file.FullName)
             $destination = Join-Path $stage $relative
             New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
@@ -33,10 +35,32 @@ function Export-CP365Case {
             } else {
                 Copy-Item -LiteralPath $file.FullName -Destination $destination
             }
-            [pscustomobject]@{ path = $relative.Replace('\', '/'); sha256 = Get-CP365Hash -Path $destination; bytes = (Get-Item $destination).Length }
+            $manifest.Add([pscustomobject]@{
+                path = $relative.Replace('\', '/')
+                sha256 = Get-CP365Hash -Path $destination
+                bytes = (Get-Item $destination).Length
+            })
         }
-        $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding utf8
-        $kind = if ($Public) { 'public' } else { 'internal' }
+
+        $bundleMetadata = [ordered]@{
+            formatVersion = 1
+            kind = $kind
+            caseId = [string]$context.Contract.caseId
+            ledgerHead = [string]$ledger.HeadHash
+        }
+        $bundlePath = Join-Path $stage 'bundle.json'
+        $bundleMetadata |
+            ConvertTo-Json -Depth 5 |
+            Set-Content -LiteralPath $bundlePath -Encoding utf8
+        $manifest.Add([pscustomobject]@{
+            path = 'bundle.json'
+            sha256 = Get-CP365Hash -Path $bundlePath
+            bytes = (Get-Item $bundlePath).Length
+        })
+
+        $manifest |
+            ConvertTo-Json -Depth 10 |
+            Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding utf8
         $zip = Join-Path $output "$($context.Contract.caseId)-$kind.zip"
         if ($PSCmdlet.ShouldProcess($zip, 'Export ChangePack365 bundle')) {
             if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
