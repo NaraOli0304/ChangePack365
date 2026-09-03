@@ -139,6 +139,39 @@ Describe 'Add-CP365GraphEvidenceRecord' {
             Should -Be 0
     }
 
+    It 'fails before writing when a checkpoint changed' {
+        $fixture = New-RegistrationFixture -Root (Join-Path $TestDrive 'checkpoint-tampered-source')
+        $case = New-RegistrationCase -Root (Join-Path $TestDrive 'checkpoint-tampered-cases') -CaseId 'GRAPH-CHECKPOINT-TAMPERED'
+        Add-Content -LiteralPath $fixture.CheckpointPath -Value '{"id":"tampered"}'
+
+        {
+            Add-CP365GraphEvidenceRecord `
+                -CasePath $case.Path `
+                -RecordPath $fixture.RecordPath
+        } | Should -Throw '*Checkpoint hash mismatch*'
+
+        (Get-ChildItem (Join-Path $case.Path 'artifacts') -File).Count |
+            Should -Be 0
+    }
+
+    It 'rejects an artifact path outside the record directory' {
+        $fixture = New-RegistrationFixture -Root (Join-Path $TestDrive 'escaped-source')
+        $case = New-RegistrationCase -Root (Join-Path $TestDrive 'escaped-cases') -CaseId 'GRAPH-ESCAPED'
+        $record = Get-Content $fixture.RecordPath -Raw | ConvertFrom-Json
+        $record.artifactPath = '../collection-manifest.json'
+        $record | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $fixture.RecordPath -Encoding utf8
+
+        {
+            Add-CP365GraphEvidenceRecord `
+                -CasePath $case.Path `
+                -RecordPath $fixture.RecordPath
+        } | Should -Throw '*must remain inside*'
+
+        (Get-ChildItem (Join-Path $case.Path 'artifacts') -File).Count |
+            Should -Be 0
+    }
+
     It 'refuses to overwrite a previously registered evidence set' {
         $fixture = New-RegistrationFixture -Root (Join-Path $TestDrive 'duplicate-source')
         $case = New-RegistrationCase -Root (Join-Path $TestDrive 'duplicate-cases') -CaseId 'GRAPH-DUPLICATE'
