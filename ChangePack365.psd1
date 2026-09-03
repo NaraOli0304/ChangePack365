@@ -19,6 +19,7 @@
         'Invoke-CP365GraphTimeSlicedRead',
         'New-CP365GraphEvidenceRecord',
         'Test-CP365Ledger',
+        'Test-CP365CasePackage',
         'Export-CP365Case'
     )
     PrivateData = @{

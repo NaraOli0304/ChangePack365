@@ -88,6 +88,27 @@ Export-CP365Case -CasePath $case.Path
 Export-CP365Case -CasePath $case.Path -Public
 ```
 
+## Offline verification of internal bundles
+
+Newly exported bundles include `bundle.json`, which records the bundle format, kind, case ID, and ledger head. An internal ZIP can be verified without Microsoft Graph, tenant access, or the original case directory:
+
+```powershell
+$bundle = Export-CP365Case -CasePath $case.Path
+$result = Test-CP365CasePackage -PackagePath $bundle.FullName
+
+$result.Status
+$result.Errors
+```
+
+The verifier rejects unsafe ZIP paths and links, then checks the exact file inventory, byte lengths, SHA-256 hashes, ledger chain, and recorded ledger head. Its deterministic statuses are:
+
+- `Valid` — the internal package is structurally complete and internally consistent;
+- `Invalid` — integrity, structure, or safe-extraction validation failed;
+- `Incomplete` — integrity is valid, but structured evidence explicitly reports incomplete collection;
+- `Unsupported` — the package type is intentionally outside the current trust boundary.
+
+Public bundles currently return `Unsupported` because redaction transforms ledger content. Offline verification also does not prove who produced a package: producer authenticity requires the planned signed-manifest capability.
+
 ## Real Conditional Access snapshots
 
 The first provider adapter is read-only and validates the connected Graph tenant and account against the case fingerprint before collecting evidence.
@@ -121,6 +142,7 @@ This separation is deliberate. Adapters for Graph, Exchange Online, and Intune w
 - [x] Expected/forbidden/unexpected delta classification
 - [x] Hash-chained ledger validation
 - [x] Internal and privacy-safe public bundles
+- [x] Offline verification for internal bundles
 - [ ] Signed manifests with a user certificate
 - [x] Read-only Graph snapshot adapter for Conditional Access
 - [ ] Exchange Online DLP rule adapter
