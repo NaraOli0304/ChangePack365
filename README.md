@@ -16,7 +16,7 @@ Most Microsoft 365 tools answer one of two questions: *What is misconfigured?* o
 
 > Can you prove that the intended property changed, forbidden properties did not change, and the evidence was not edited afterward?
 
-The MVP introduces five opinionated controls:
+The MVP introduces seven opinionated controls:
 
 1. **Tenant fingerprint** — tenant, account, and cloud become a short visual fingerprint. A mismatched identity cannot unlock a controlled-write session.
 2. **Change contract** — expected and forbidden JSON paths are declared before execution. Every other delta is unexpected by default.
