@@ -145,6 +145,12 @@ Compare-CP365Snapshot -CasePath $case.Path -BeforePath $before.Path -AfterPath $
 
 See [the adapter safety boundary and setup](docs/graph-conditional-access.md).
 
+## Intune Windows Update snapshots
+
+`Save-CP365IntuneUpdatePolicySnapshot` records one update-ring policy by ID and all declared assignments using read-only Graph calls. It validates the Global delegated session against the case fingerprint and requires `DeviceManagementConfiguration.Read.All`.
+
+Use the resulting before/after JSON with `Compare-CP365Snapshot`. Intended assignments do not prove that a device applied the policy. See [scope, permissions, examples, and failure behavior](docs/graph-intune-update-policy.md).
+
 ## Safety model
 
 The default mode is `ReadOnly`. `ControlledWrite` does not perform a Microsoft 365 change by itself; it only unlocks the surrounding evidence session after:
@@ -166,7 +172,8 @@ This separation is deliberate. Adapters for Graph, Exchange Online, and Intune w
 - [x] Signed manifests with a user certificate
 - [x] Read-only Graph snapshot adapter for Conditional Access
 - [ ] Exchange Online DLP rule adapter
-- [ ] Intune device/policy adapter
+- [x] Read-only Intune Windows Update policy and assignment snapshots
+- [ ] Additional Intune policy families and managed-device inventory
 - [x] PT-BR, ES, and EN stakeholder summaries generated from structured facts
 - [x] GitHub Actions and Pester matrix
 - [x] JSON Schema for the change contract

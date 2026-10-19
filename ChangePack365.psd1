@@ -16,6 +16,7 @@
         'New-CP365StakeholderSummary',
         'Export-CP365HtmlReport',
         'Save-CP365ConditionalAccessSnapshot',
+        'Save-CP365IntuneUpdatePolicySnapshot',
         'Invoke-CP365GraphTimeSlicedRead',
         'New-CP365GraphEvidenceRecord',
         'Test-CP365Ledger',
