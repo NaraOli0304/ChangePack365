@@ -47,8 +47,12 @@ function Save-CP365ConditionalAccessSnapshot {
             $uri = $null
         } else {
             foreach ($policy in @($response.value)) { $policies.Add($policy) }
-            $nextProperty = $response.PSObject.Properties['@odata.nextLink']
-            $uri = if ($nextProperty) { [string]$nextProperty.Value } else { $null }
+            $uri = if ($response -is [System.Collections.IDictionary]) {
+                [string]$response['@odata.nextLink']
+            } else {
+                $nextProperty = $response.PSObject.Properties['@odata.nextLink']
+                if ($nextProperty) { [string]$nextProperty.Value } else { $null }
+            }
         }
     } while ($uri)
 

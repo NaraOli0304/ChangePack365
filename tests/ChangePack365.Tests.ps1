@@ -97,6 +97,87 @@ Describe 'Conditional Access Graph adapter' {
         (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
     }
 
+    It 'collects hashtable pages through an empty intermediate page' {
+        function global:Invoke-MgGraphRequest {
+            param([string]$Method, [string]$Uri)
+            if ($Method -ne 'GET') { throw 'Unexpected Graph write.' }
+            switch ($Uri) {
+                '/v1.0/identity/conditionalAccess/policies' {
+                    return @{
+                        value = @(@{ id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; displayName = 'Policy B' })
+                        '@odata.nextLink' = 'https://graph.microsoft.com/v1.0/empty-page'
+                    }
+                }
+                'https://graph.microsoft.com/v1.0/empty-page' {
+                    return @{
+                        value = @()
+                        '@odata.nextLink' = 'https://graph.microsoft.com/v1.0/last-page'
+                    }
+                }
+                'https://graph.microsoft.com/v1.0/last-page' {
+                    return @{
+                        value = @(@{ id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; displayName = 'Policy A' })
+                    }
+                }
+                default { throw "Unexpected Graph URI: $Uri" }
+            }
+        }
+
+        $case = New-CP365Case -CaseId 'TEST-GRAPH-HASHTABLE' -Title Test -TenantId $Tenant -TenantDisplayName Contoso -Account 'one@contoso.example' -RootPath $Root
+        $result = Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase before
+        $snapshot = Get-Content -LiteralPath $result.Path -Raw | ConvertFrom-Json -Depth 100
+
+        $result.PolicyCount | Should -Be 2
+        $result.ReadOnly | Should -BeTrue
+        @($snapshot.policies).Count | Should -Be 2
+        ($snapshot.policies.id -join ',') | Should -Be 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa,bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+        $events = Get-Content -LiteralPath (Join-Path $case.Path 'ledger.jsonl') | ConvertFrom-Json
+        @($events | Where-Object eventType -EQ 'GraphSnapshotCollected')[0].payload.count | Should -Be 2
+        (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
+    }
+
+    It 'does not save a partial snapshot when a later hashtable page fails' {
+        function global:Invoke-MgGraphRequest {
+            param([string]$Method, [string]$Uri)
+            if ($Method -ne 'GET') { throw 'Unexpected Graph write.' }
+            if ($Uri -eq '/v1.0/identity/conditionalAccess/policies') {
+                return @{
+                    value = @(@{ id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; displayName = 'Policy B' })
+                    '@odata.nextLink' = 'https://graph.microsoft.com/v1.0/failing-page'
+                }
+            }
+            throw 'Synthetic page failure.'
+        }
+
+        $case = New-CP365Case -CaseId 'TEST-GRAPH-PAGE-FAILURE' -Title Test -TenantId $Tenant -TenantDisplayName Contoso -Account 'one@contoso.example' -RootPath $Root
+        { Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase before } | Should -Throw '*Synthetic page failure*'
+
+        Test-Path -LiteralPath (Join-Path $case.Path 'before/conditional-access-all.json') | Should -BeFalse
+        $events = Get-Content -LiteralPath (Join-Path $case.Path 'ledger.jsonl') | ConvertFrom-Json
+        @($events | Where-Object eventType -EQ 'GraphSnapshotCollected').Count | Should -Be 0
+        (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
+    }
+
+    It 'collects a single policy returned as a hashtable' {
+        function global:Invoke-MgGraphRequest {
+            param([string]$Method, [string]$Uri)
+            if ($Method -ne 'GET') { throw 'Unexpected Graph write.' }
+            if ($Uri -ne '/v1.0/identity/conditionalAccess/policies/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') {
+                throw "Unexpected Graph URI: $Uri"
+            }
+            return @{ id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; displayName = 'Policy A' }
+        }
+
+        $case = New-CP365Case -CaseId 'TEST-GRAPH-SINGLE' -Title Test -TenantId $Tenant -TenantDisplayName Contoso -Account 'one@contoso.example' -RootPath $Root
+        $result = Save-CP365ConditionalAccessSnapshot -CasePath $case.Path -Phase before -PolicyId 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+        $snapshot = Get-Content -LiteralPath $result.Path -Raw | ConvertFrom-Json -Depth 100
+
+        $result.PolicyCount | Should -Be 1
+        $result.ReadOnly | Should -BeTrue
+        $snapshot.policies[0].id | Should -Be 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+        (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
+    }
+
     It 'rejects a different connected tenant before calling Graph' {
         $case = New-CP365Case -CaseId 'TEST-GRAPH-MISMATCH' -Title Test -TenantId $Tenant -TenantDisplayName Contoso -Account 'one@contoso.example' -RootPath $Root
         function global:Get-MgContext {
