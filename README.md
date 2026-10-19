@@ -151,6 +151,8 @@ See [the adapter safety boundary and setup](docs/graph-conditional-access.md).
 
 Use the resulting before/after JSON with `Compare-CP365Snapshot`. Intended assignments do not prove that a device applied the policy. See [scope, permissions, examples, and failure behavior](docs/graph-intune-update-policy.md).
 
+For a change record, explicit value checks, rollback evidence, and verified internal export, follow the [planned Intune change runbook](docs/intune-change-evidence-runbook.md). Its lab example preserves the experimental MVP boundary.
+
 ## Safety model
 
 The default mode is `ReadOnly`. `ControlledWrite` does not perform a Microsoft 365 change by itself; it only unlocks the surrounding evidence session after:
