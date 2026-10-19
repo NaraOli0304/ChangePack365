@@ -45,7 +45,7 @@ function Compare-CP365Snapshot {
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
     $jsonPath = Join-Path $context.Root "diff/diff-$stamp.json"
     $csvPath = Join-Path $context.Root "diff/diff-$stamp.csv"
-    @($changes) | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $jsonPath -Encoding utf8
+    ConvertTo-Json -InputObject @($changes) -Depth 20 | Set-Content -LiteralPath $jsonPath -Encoding utf8
     @($changes) | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Encoding utf8
     $summary = [ordered]@{
         total      = @($changes).Count
