@@ -16,14 +16,19 @@ jobs:
       - uses: actions/checkout@v6
       - name: Verify secure transfer outcomes
         shell: pwsh
-        env:
-          PSRULE_AZURE_BICEP_FILE_EXPANSION: 'true'
         run: |
           $ErrorActionPreference = 'Stop'
           Install-Module PSRule.Rules.Azure -Scope CurrentUser -Force
           Import-Module PSRule.Rules.Azure
           $rule = 'Azure.Storage.SecureTransfer'
-          $results = @(Invoke-PSRule -Module PSRule.Rules.Azure -Name $rule -InputPath ./examples/psrule/storage.bicep -Outcome All)
+          $template = az bicep build --file ./examples/psrule/storage.bicep --stdout
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Bicep compilation failed.'
+          }
+          $resources = ($template | ConvertFrom-Json -AsHashtable).resources
+          $results = @(foreach ($resource in $resources) {
+            Invoke-PSRule -Module PSRule.Rules.Azure -Name $rule -InputObject $resource -Outcome All
+          })
           $passed = @($results | Where-Object { $_.RuleName -eq $rule -and $_.Outcome -eq 'Pass' })
           $failed = @($results | Where-Object { $_.RuleName -eq $rule -and $_.Outcome -eq 'Fail' })
           if ($results.Count -ne 2 -or $passed.Count -ne 1 -or $failed.Count -ne 1) {
