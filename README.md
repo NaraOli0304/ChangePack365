@@ -187,3 +187,35 @@ ChangePack365 should integrate with mature assessment tools instead of copying t
 ## License
 
 MIT © 2026 Nara Oliveira
+
+## Compare Azure Monitor alert routes
+
+Use `Compare-CP365AlertRoute -BeforePath before.json -AfterPath after.json -ExpectedPath approved.json`
+to compare complete, offline JSON inventories. An inventory uses this shape:
+
+```json
+{
+  "scope": "fictional-subscription",
+  "complete": true,
+  "rules": [
+    {
+      "ruleId": "example-alert",
+      "enabled": true,
+      "severity": 0,
+      "routes": [
+        { "actionGroupId": "example-group", "destination": "alerts@example.invalid" }
+      ]
+    }
+  ]
+}
+```
+
+Include rules with no route as `"routes": []` and rules without a severity as
+`"severity": null`. The input producer must resolve the effective enabled
+destinations and mark an inventory complete only after collecting the full scope.
+Use the same scope identifier for all files. The optional approved inventory
+represents the entire desired post-change state. Without it, any change is
+unexpected. A previously routed, enabled Sev 0/1 rule that disappears, is
+disabled, or loses its last route is flagged even when that change was expected.
+Results retain input identifiers and destinations for local review. Azure access
+and notification delivery are outside this offline comparison.

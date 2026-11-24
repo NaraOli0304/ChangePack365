@@ -13,6 +13,7 @@
         'Add-CP365Evidence',
         'Add-CP365GraphEvidenceRecord',
         'Compare-CP365Snapshot',
+        'Compare-CP365AlertRoute',
         'New-CP365StakeholderSummary',
         'Export-CP365HtmlReport',
         'Save-CP365ConditionalAccessSnapshot',
