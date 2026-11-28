@@ -36,3 +36,22 @@ Describe 'Snapshot comparison result cardinality' {
         (Test-CP365Ledger -CasePath $case.Path).Valid | Should -BeTrue
     }
 }
+
+Describe 'Snapshot comparison contract paths with array indices' {
+    It 'classifies expected and forbidden changes at literal array indices' {
+        $case = New-CP365Case -CaseId 'DIFF-ARRAY-INDEX' -Title 'Conditional Access array paths' -TenantId '11111111-2222-4333-8444-555555555555' -TenantDisplayName 'Contoso' -Account 'operator@contoso.example' -RootPath $TestDrive -ExpectedChange @(@{ path = '$.policies[0].state'; operation = 'Modified' }) -ForbiddenChange @(@{ path = '$.policies[0].conditions.*'; operation = 'Modified' })
+        $beforePath = Join-Path $TestDrive 'array-before.json'
+        $afterPath = Join-Path $TestDrive 'array-after.json'
+        Set-Content -LiteralPath $beforePath -Value '{"policies":[{"state":"reportOnly","conditions":{"users":"pilot"}}]}' -Encoding utf8
+        Set-Content -LiteralPath $afterPath -Value '{"policies":[{"state":"enabled","conditions":{"users":"all"}}]}' -Encoding utf8
+
+        $result = Compare-CP365Snapshot -CasePath $case.Path -BeforePath $beforePath -AfterPath $afterPath
+
+        $result.Summary.total | Should -Be 2
+        $result.Summary.expected | Should -Be 1
+        $result.Summary.forbidden | Should -Be 1
+        $result.Summary.unexpected | Should -Be 0
+        @($result.Changes | Where-Object path -eq '$.policies[0].state')[0].classification | Should -Be 'Expected'
+        @($result.Changes | Where-Object path -eq '$.policies[0].conditions.users')[0].classification | Should -Be 'Forbidden'
+    }
+}
