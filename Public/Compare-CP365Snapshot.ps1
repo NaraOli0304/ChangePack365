@@ -22,11 +22,11 @@ function Compare-CP365Snapshot {
         $operation = if (-not $hasBefore) { 'Added' } elseif (-not $hasAfter) { 'Removed' } else { 'Modified' }
         $forbiddenMatch = @($forbiddenRules | Where-Object {
             $operationProperty = $_.PSObject.Properties['operation']
-            ($path -like $_.path) -and (($null -eq $operationProperty) -or [string]::IsNullOrWhiteSpace([string]$operationProperty.Value) -or ($operationProperty.Value -eq $operation))
+            ($path -like ([string]$_.path).Replace('[', '`[').Replace(']', '`]')) -and (($null -eq $operationProperty) -or [string]::IsNullOrWhiteSpace([string]$operationProperty.Value) -or ($operationProperty.Value -eq $operation))
         }).Count -gt 0
         $expectedMatch = @($expectedRules | Where-Object {
             $operationProperty = $_.PSObject.Properties['operation']
-            ($path -like $_.path) -and (($null -eq $operationProperty) -or [string]::IsNullOrWhiteSpace([string]$operationProperty.Value) -or ($operationProperty.Value -eq $operation))
+            ($path -like ([string]$_.path).Replace('[', '`[').Replace(']', '`]')) -and (($null -eq $operationProperty) -or [string]::IsNullOrWhiteSpace([string]$operationProperty.Value) -or ($operationProperty.Value -eq $operation))
         }).Count -gt 0
         $classification = if ($forbiddenMatch) {
             'Forbidden'
