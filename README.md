@@ -145,6 +145,8 @@ Compare-CP365Snapshot -CasePath $case.Path -BeforePath $before.Path -AfterPath $
 
 See [the adapter safety boundary and setup](docs/graph-conditional-access.md).
 
+For a Conditional Access change, see the [Maester and targeted Microsoft365DSC evidence runbook](docs/maester-m365dsc-change-evidence.md). It keeps regression reports and broader component exports alongside the policy JSON delta in one case.
+
 ## Intune Windows Update snapshots
 
 `Save-CP365IntuneUpdatePolicySnapshot` records one update-ring policy by ID and all declared assignments using read-only Graph calls. It validates the Global delegated session against the case fingerprint and requires `DeviceManagementConfiguration.Read.All`.
