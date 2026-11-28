@@ -27,8 +27,8 @@ $case = New-CP365Case `
   -Account 'operator@contoso.example' `
   -Workload EntraID `
   -Mode ReadOnly `
-  -ExpectedChange @(@{ path = 'state'; operation = 'Modified' }) `
-  -ForbiddenChange @(@{ path = 'conditions.*'; operation = 'Modified' })
+  -ExpectedChange @(@{ path = '$.policies[0].state'; operation = 'Modified' }) `
+  -ForbiddenChange @(@{ path = '$.policies[0].conditions.*'; operation = 'Modified' })
 
 Connect-MgGraph -Scopes 'Policy.Read.All' -UseDeviceAuthentication
 Get-MgContext
@@ -36,7 +36,7 @@ $before = Save-CP365ConditionalAccessSnapshot `
   -CasePath $case.Path -Phase before -PolicyId '<lab-policy-guid>'
 ```
 
-Declare paths and operations from the **actual adapter JSON structure** before a real change. The above contract values are only an illustration, not a recommended production policy contract. Capture the intended scope and rollback in the ticket.
+Declare paths and operations from the **actual adapter JSON structure** before a real change. A single-policy snapshot has a `policies` array; its first policy's state is `$.policies[0].state` in the current comparator. The above contract values are only an illustration, not a recommended production policy contract. Capture the intended scope and rollback in the ticket.
 
 For Maester 2.x, use the installed test folder from the existing pilot. Verify the command and module version in the operator session, then run the same selection on both sides. Output is stored outside Git and inside the case after provenance review.
 
